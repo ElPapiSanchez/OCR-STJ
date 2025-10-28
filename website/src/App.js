@@ -32,6 +32,7 @@ import {
 } from "./states";
 
 import logoSTJ from "static/logoSTJ.svg";
+import logoUN from "static/Logo_of_the_United_Nations.svg"
 import FileExplorer from 'Components/FileSystem/FileSystem';
 import ESPage from 'Components/ElasticSearchPage/ESPage';
 import LoginPage from 'Components/Admin/LoginPage';
@@ -42,6 +43,9 @@ import Footer from 'Components/Footer/Footer';
 
 const API_URL = `${window.location.protocol}//${window.location.host}/${process.env.REACT_APP_API_URL}`;
 
+const STJ = 1;
+const UN_ARMS = 2;
+
 /**
  * About Versioning:
  * Version -> MAJOR.MINOR.PATCH
@@ -51,6 +55,8 @@ const API_URL = `${window.location.protocol}//${window.location.host}/${process.
  */
 
 const VERSION = "1.4.1";
+
+const MODEL = STJ;
 
 function App() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -250,8 +256,8 @@ function App() {
                          }}
                     >
                         <img
-                            src={logoSTJ}
-                            alt="Logótipo do STJ"
+                            src={MODEL === STJ ? logoSTJ : logoUN}
+                            alt={MODEL === STJ ? "Logótipo do STJ" : "Logótipo da UN"}
                             style={{
                                 maxHeight: "50px",
                                 marginLeft: "10px",
