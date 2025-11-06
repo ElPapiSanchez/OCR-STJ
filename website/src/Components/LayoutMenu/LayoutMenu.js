@@ -12,6 +12,9 @@ import Switch from '@mui/material/Switch';
 import CircularProgress from '@mui/material/CircularProgress';
 import { NumberField } from '@base-ui-components/react/number-field';
 import Tooltip from "@mui/material/Tooltip";
+import SettingsIcon from '@mui/icons-material/Settings';
+
+import { withTranslation } from "react-i18next";
 
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DeleteRoundedIcon from '@mui/icons-material/DeleteRounded';
@@ -50,6 +53,8 @@ class LayoutMenu extends React.Component {
 		this.state = {
 			contents: [],
 			currentPage: 1,
+
+            info: props.info,
 
 			boxes: [],
 			uncommittedChanges: false,
@@ -413,7 +418,7 @@ class LayoutMenu extends React.Component {
 
 	GenerateLayoutAutomatically() {
 		this.setState({ segmentLoading: true });
-		this.successNotifRef.current.openNotif("A segmentar automaticamente... Por favor aguarde");
+		this.successNotifRef.current.openNotif(this.props.t("auto layout popup"));
 
         const path = (this.props.current_folder + '/' + this.props.filename).replace(/^\//, '');
 		axios.get(API_URL + '/generate-automatic-layouts', {
@@ -734,7 +739,15 @@ class LayoutMenu extends React.Component {
 		this.setState({ textModeState: mode });
 	}
 
+    configureOCR(e, usingCustomConfig) {
+        e.stopPropagation();
+        const customConfig = usingCustomConfig ? this.state.info?.["config"] : null;
+        this.props.configureOCR(this.props.name, false, false, customConfig);
+    }
+
 	render() {
+        const info = this.state.info;
+        const usingCustomConfig = info?.["config"] && info["config"] !== "default";
         const loaded = this.state.contents.length !== 0;
         let tableData = [];
 
@@ -808,16 +821,25 @@ class LayoutMenu extends React.Component {
                             component="h2"
                             className="toolbarTitle"
                         >
-                            Segmentar o documento
+                            {this.props.t("layout create")}
                         </Typography>
                     </Box>
 
 					<Box>
+                        <Button
+                            disabled={cleanAllDisabled}
+                            variant="contained"
+                            className="menuFunctionButton"
+                            onClick={(e) => this.configureOCR(e, usingCustomConfig)}
+                            startIcon={<SettingsIcon />}
+                        >
+                            {this.props.t("config ocr")}
+                        </Button>
                         <Tooltip
                             placement="top"
                             title={
                                 this.state.segmentLoading
-                                    ? "O documento está a ser segmentado pelo servidor"
+                                    ? this.props.t("layout loading")
                                 : "A obter informação do servidor"
                             }
                             disableFocusListener={!cleanAllDisabled}
@@ -831,7 +853,7 @@ class LayoutMenu extends React.Component {
 							onClick={() => this.cleanAllBoxes()}
 							startIcon={<DeleteRoundedIcon />}
 						>
-							Limpar Tudo
+							{this.props.t("clean all")}
 						</Button>
                         </span></Tooltip>
 
@@ -839,7 +861,7 @@ class LayoutMenu extends React.Component {
                             placement="top"
                             title={
                                 this.state.segmentLoading
-                                    ? "O documento está a ser segmentado pelo servidor"
+                                    ? this.props.t("layout loading")
                                 : cannotAutoSegmentFile
                                     ? "Não é possível segmentar automaticamente este formato de ficheiro"
                                 : "A obter informação do servidor"
@@ -855,7 +877,7 @@ class LayoutMenu extends React.Component {
                             style={{pointerEvents: "auto"}  /* ensures disabled button can show title */}
 							onClick={() => this.GenerateLayoutAutomatically()}
 						>
-							Segmentar automaticamente
+							{this.props.t("auto layout")}
 							{
 								this.state.segmentLoading
 									? <CircularProgress sx={{ ml: "10px" }} size={20} />
@@ -868,7 +890,7 @@ class LayoutMenu extends React.Component {
                             placement="top"
                             title={
                                 this.state.segmentLoading
-                                    ? "O documento está a ser segmentado pelo servidor"
+                                    ? this.props.t("layout loading")
                                 : !this.state.uncommittedChanges
                                     ? "Não há alterações"
                                 : "A obter informação do servidor"
@@ -885,7 +907,7 @@ class LayoutMenu extends React.Component {
 							startIcon={<SaveIcon />}
 							onClick={() => this.saveLayout()}
 						>
-							Guardar
+							{this.props.t("save")}
 						</Button>
                         </span></Tooltip>
 
@@ -893,7 +915,7 @@ class LayoutMenu extends React.Component {
                             placement="top"
                             title={
                                 this.state.segmentLoading
-                                    ? "O documento está a ser segmentado pelo servidor"
+                                    ? this.props.t("layout loading")
                                 : !this.state.uncommittedChanges
                                     ? "Não há alterações"
                                 : "A obter informação do servidor"
@@ -1034,7 +1056,7 @@ class LayoutMenu extends React.Component {
                                         textTransform: 'none',
                                     }}
                                 >
-                                    Replicar
+                                    {this.props.t("replicate")}
                                 </Button>
                             </span></Tooltip>
 
@@ -1060,7 +1082,7 @@ class LayoutMenu extends React.Component {
                                         textTransform: 'none',
                                     }}
                                 >
-                                    Agrupar
+                                    {this.props.t("join")}
                                 </Button>
                             </span></Tooltip>
 
@@ -1084,7 +1106,7 @@ class LayoutMenu extends React.Component {
                                         textTransform: 'none',
                                     }}
                                 >
-                                    Desagrupar
+                                    {this.props.t("separate")}
                                 </Button>
                             </span></Tooltip>
 
@@ -1106,7 +1128,7 @@ class LayoutMenu extends React.Component {
                                         textTransform: 'none',
                                     }}
                                 >
-                                    Apagar
+                                    {this.props.t("delete")}
                                 </Button>
                             </span></Tooltip>
 
@@ -1123,7 +1145,7 @@ class LayoutMenu extends React.Component {
 								}}
 								size='small'
 							/>
-							<span>Ignorar/Extrair</span>
+							<span>{this.props.t("ignore extract")}</span>
 						</Box>
 
                         <LayoutTable data={tableData}
@@ -1158,8 +1180,9 @@ LayoutMenu.defaultProps = {
     spaceId: "",
     current_folder: null,
     filename: null,
+    configureOCR: null,
     // functions:
     closeLayoutMenu: null
 }
 
-export default LayoutMenu;
+export default withTranslation()(LayoutMenu);

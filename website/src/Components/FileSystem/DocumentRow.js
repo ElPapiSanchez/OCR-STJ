@@ -7,6 +7,8 @@ import MenuItem from '@mui/material/MenuItem';
 import TableCell from '@mui/material/TableCell';
 import TableRow from '@mui/material/TableRow';
 
+import {withTranslation} from "react-i18next";
+
 import DoneIcon from '@mui/icons-material/Done';
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
 import BorderAllIcon from '@mui/icons-material/BorderAll';
@@ -403,10 +405,11 @@ class DocumentRow extends React.Component {
                         </Box>
                     </TableCell>
 
-                    <TableCell className="explorerCell detailsCell" align='left'>
+                    <TableCell className="explorerCell detailsCell" align='left'
+                        onClick={(e) => this.createLayout(e)}>
                         <span>
-                            {info["pages"] ? (info["pages"] + " página(s)") : null}
-                            {info["words"] ? ("\n" + info["words"] + " palavras") : null}
+                            {info["pages"] ? (info["pages"] + " " + this.props.t("page") + "(s)") : null}
+                            {info["words"] ? ("\n" + info["words"] + " " + this.props.t("words")) : null}
                         </span>
                     </TableCell>
 
@@ -428,7 +431,7 @@ class DocumentRow extends React.Component {
                     ? uploadIsStuck
                         ? <TableCell className="explorerCell stateCell errorCell" align='left'>
                             <Box className="stateBox">
-                                <span>Erro ao carregar documento</span>
+                                <span>{this.props.t("upload error")}</span>
                             </Box>
                         </TableCell>
 
@@ -436,7 +439,7 @@ class DocumentRow extends React.Component {
                             ? <TableCell className="explorerCell stateCell infoCell" align='left'>
                                 <Box className="stateBox">
                                     <CircularProgress sx={{ml: '1rem', mr: '1rem', flexShrink: "0"}} size='1rem'/>
-                                    <span>{status.message}</span>
+                                    <span>{this.props.t("uploading stage")}</span>
                                 </Box>
                             </TableCell>
 
@@ -444,7 +447,7 @@ class DocumentRow extends React.Component {
                             ? <TableCell className="explorerCell stateCell infoCell" align='left'>
                                 <Box className="stateBox">
                                     <CircularProgress sx={{ml: '1rem', mr: '1rem', flexShrink: "0"}} size='1rem'/>
-                                    <span>{status.message}</span>
+                                    <span>{this.props.t("preparing stage")}</span>
                                 </Box>
                             </TableCell>
                         : null
@@ -452,7 +455,7 @@ class DocumentRow extends React.Component {
                     : status.stage === "error"
                         ? <TableCell className="explorerCell stateCell errorCell" align='left'>
                             <Box className="stateBox">
-                                <span>{status.message}</span>
+                                <span>{this.props.t("upload error")}</span>
                             </Box>
                         </TableCell>
 
@@ -649,4 +652,4 @@ DocumentRow.defaultProps = {
     createLayout: null
 }
 
-export default DocumentRow;
+export default withTranslation()(DocumentRow);

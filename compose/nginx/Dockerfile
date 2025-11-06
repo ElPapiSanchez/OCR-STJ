@@ -2,7 +2,7 @@ FROM node:lts AS builder
 
 COPY ./website/package* .
 
-RUN npm ci
+RUN npm install --legacy-peer-deps
 
 COPY ./website .
 

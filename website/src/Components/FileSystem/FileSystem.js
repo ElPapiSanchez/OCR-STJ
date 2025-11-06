@@ -2,6 +2,8 @@ import React from 'react';
 import axios from 'axios';
 import dayjs from 'dayjs';
 
+import { withTranslation } from "react-i18next";
+
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Table from '@mui/material/Table';
@@ -293,6 +295,7 @@ class FileExplorer extends React.Component {
         if (this.props.ocrMenu || this.props.layoutMenu || this.props.editingMenu) return;
         // update info of rows for current folder's contents
         this.rowRefs.forEach(ref => {
+            if (!ref.current) return;
             const filename = ref.current.props.name;
             const rowInfo = this.getInfo(filename);
             ref.current.updateInfo(rowInfo);
@@ -905,7 +908,7 @@ class FileExplorer extends React.Component {
                                         width: "fit-content",
                                     }}
                                 >
-                                    <span><b>Nome</b></span>
+                                    <span><b>{this.props.t("name")}</b></span>
                                     {this.state.orderBy === "name" ? (
                                         <Box component="span" sx={visuallyHidden}>
                                             {this.state.order === 'desc' ? 'ordem descendente' : 'ordem ascendente'}
@@ -925,7 +928,7 @@ class FileExplorer extends React.Component {
                                         width: "fit-content",
                                     }}
                                 >
-                                    <span><b>Detalhes</b></span>
+                                    <span><b>{this.props.t("details")}</b></span>
                                     {this.state.orderBy === "details" ? (
                                         <Box component="span" sx={visuallyHidden}>
                                             {this.state.order === 'desc' ? 'ordem descendente' : 'ordem ascendente'}
@@ -944,7 +947,7 @@ class FileExplorer extends React.Component {
                                         flexWrap: "wrap",
                                     }}
                                 >
-                                    <span><b>Tamanho</b></span>
+                                    <span><b>{this.props.t("size")}</b></span>
                                     {this.state.orderBy === "size" ? (
                                         <Box component="span" sx={visuallyHidden}>
                                             {this.state.order === 'desc' ? 'ordem descendente' : 'ordem ascendente'}
@@ -963,7 +966,7 @@ class FileExplorer extends React.Component {
                                         flexWrap: "wrap",
                                     }}
                                 >
-                                    <b>Data de criação</b>
+                                    <b>{this.props.t("date of creation")}</b>
                                     {this.state.orderBy === "dateCreated" ? (
                                         <Box component="span" sx={visuallyHidden}>
                                             {this.state.order === 'desc' ? 'ordem descendente' : 'ordem ascendente'}
@@ -973,7 +976,7 @@ class FileExplorer extends React.Component {
                             </TableCell>
 
                             <TableCell scope="column" className="headerCell explorerCell stateCell" align="left">
-                                <span><b>Estado do Processo</b></span>
+                                <span><b>{this.props.t("process state")}</b></span>
                             </TableCell>
                         </TableRow>
                     </TableHead>
@@ -1140,6 +1143,7 @@ class FileExplorer extends React.Component {
                                   spaceId={this.props._private ? this.props.spaceId : ""}
                                   current_folder={this.props.current_folder}
                                   filename={this.props.current_file_name}
+                                  configureOCR={this.configureOCR}
                                   closeLayoutMenu={this.closeLayoutMenu}/>
                     : this.props.editingMenu
                     ? <EditingMenu _private={this.props._private}
@@ -1163,7 +1167,7 @@ class FileExplorer extends React.Component {
                                 className="menuButton menuFunctionButton noMarginRight"
                                 sx={{marginLeft: '0.5rem'}}
                             >
-                                Nova Pasta
+                                {this.props.t("new folder")}
                             </Button>
 
                             <Button
@@ -1176,7 +1180,7 @@ class FileExplorer extends React.Component {
                                 onClick={() => this.createFile()}
                                 className="menuButton menuFunctionButton noMarginRight"
                             >
-                                Novo Documento
+                                {this.props.t("new document")}
                             </Button>
                         </Box>
 
@@ -1194,7 +1198,7 @@ class FileExplorer extends React.Component {
                                     marginRight: "0.5rem",
                                 }}
                             >
-                                Sair do Espaço
+                                {this.props.t("leave space")};
                             </Button>
                             : <Button
                                 variant="contained"
@@ -1207,7 +1211,7 @@ class FileExplorer extends React.Component {
                                     marginBottom: "auto"
                                 }}
                             >
-                                Espaço Privado
+                                {this.props.t("private space")}
                             </Button>
                         }
                     </Box>
@@ -1281,4 +1285,4 @@ FileExplorer.defaultProps = {
     exitMenus: null
 }
 
-export default FileExplorer;
+export default withTranslation()(FileExplorer);

@@ -1,64 +1,66 @@
+import i18next from "i18next";
+
 export const defaultLangs = ["por"];
-export const tesseractLangList = [
-    { value: "deu", description: "Alemão"},
-    { value: "spa", description: "Espanhol Castelhano"},
-    { value: "fra", description: "Francês"},
-    { value: "eng", description: "Inglês"},
-    { value: "por", description: "Português"},
-    { value: "equ", description: "Módulo de detecção de matemática / equações"},
-    { value: "osd", description: "Módulo de orientação e detecção de scripts"},
-]
+
+export const tesseractLangList = () => [
+    { value: "deu", description: i18next.t("languages.german") },
+    { value: "spa", description: i18next.t("languages.spanish") },
+    { value: "fra", description: i18next.t("languages.french") },
+    { value: "eng", description: i18next.t("languages.english") },
+    { value: "por", description: i18next.t("languages.portuguese") },
+    { value: "equ", description: i18next.t("languages.math module") },
+    { value: "osd", description: i18next.t("languages.osd module") },
+];
 
 export const defaultOutputs = ["pdf"];
-export const tesseractOutputsList = [
-    { value: "pdf_indexed", description: "PDF com texto e índice de palavras"},
-    { value: "pdf", description: "PDF com texto (por defeito)"},
-    { value: "txt", description: "Texto"},
-    { value: "txt_delimited", description: "Texto com separador por página"},
-    { value: "csv", description: "Índice de palavras em formato CSV"},
-    { value: "ner", description: "Entidades (NER)"},
-    { value: "hocr", description: "hOCR (apenas documentos com 1 página)"},
-    { value: "xml", description: "ALTO (apenas documentos com 1 página)"},
-]
+export const tesseractOutputsList = () => [
+    { value: "pdf_indexed", description: i18next.t("output.pdf indexed") },
+    { value: "pdf", description: i18next.t("output.pdf") },
+    { value: "txt", description: i18next.t("output.txt") },
+    { value: "txt_delimited", description: i18next.t("output.txt delimited") },
+    { value: "csv", description: i18next.t("output.csv") },
+    { value: "ner", description: i18next.t("output.ner") },
+    { value: "hocr", description: i18next.t("output.hocr") },
+    { value: "xml", description: i18next.t("output.xml") },
+];
 
 export const defaultEngine = "pytesseract";
-export const engineList = [
-    { value: "pytesseract", description: "PyTesseract"},
-    { value: "tesserOCR", description: "TesserOCR"},
-]
+export const engineList = () => [
+    { value: "pytesseract", description: i18next.t("engine.pytesseract") },
+    { value: "tesserOCR", description: i18next.t("engine.tesserOCR") },
+];
 
 export const defaultEngineMode = 3;
-export const tesseractModeList = [
-    { value: 0, description: "Tesseract Original"},
-    { value: 1, description: "Tesseract LSTM"},
-    { value: 2, description: "Tesseract LSTM + Original combinado"},
-    { value: 3, description: "Modo disponível por defeito"},
-]
+export const tesseractModeList = () => [
+    { value: 0, description: i18next.t("mode.original") },
+    { value: 1, description: i18next.t("mode.lstm") },
+    { value: 2, description: i18next.t("mode.combined") },
+    { value: 3, description: i18next.t("mode.default") },
+];
 
 export const defaultSegmentationMode = 3;
-export const tesseractSegmentList = [
-    //{ value: 0, description: "Apenas Orientation and Script Detection (OSD)"},  // TODO: allow producing only OSD file without OCR
-    { value: 1, description: "OCR com segmentação automática de página e OSD"},
-    { value: 2, description: "Segmentação automática de página sem OSD nem OCR"},
-    { value: 3, description: "(Por defeito) OCR com segmentação automática, sem OSD"},
-    { value: 4, description: "Coluna de texto com linhas de tamanho variável"},
-    { value: 5, description: "Bloco uniforme de texto, alinhado verticalmente"},
-    { value: 6, description: "Bloco uniforme de texto"},
-    { value: 7, description: "Imagem com apenas uma linha de texto"},
-    { value: 8, description: "Imagem com apenas uma palavra"},
-    { value: 9, description: "Imagem com apenas uma palavra num círculo"},
-    { value: 10, description: "Imagem com apenas um caracter"},
-    { value: 11, description: "Texto disperso; procurar o máximo de texto sem ordem particular"},
-    { value: 12, description: "Texto disperso com OSD"},
-    { value: 13, description: "Contornando truques específicos do Tesseract, tratar imagem como apenas uma linha de texto"},
-]
+export const tesseractSegmentList = () => [
+    { value: 1, description: i18next.t("segmentation mode.auto with osd") },
+    { value: 2, description: i18next.t("segmentation mode.auto no osd") },
+    { value: 3, description: i18next.t("segmentation mode.default") },
+    { value: 4, description: i18next.t("segmentation mode.column variable lines") },
+    { value: 5, description: i18next.t("segmentation mode.block vertical") },
+    { value: 6, description: i18next.t("segmentation mode.block uniform") },
+    { value: 7, description: i18next.t("segmentation mode.single line") },
+    { value: 8, description: i18next.t("segmentation mode.single word") },
+    { value: 9, description: i18next.t("segmentation mode.single circle word") },
+    { value: 10, description: i18next.t("segmentation mode.single char") },
+    { value: 11, description: i18next.t("segmentation mode.sparse text") },
+    { value: 12, description: i18next.t("segmentation mode.sparse text osd") },
+    { value: 13, description: i18next.t("segmentation mode.single line hack") },
+];
 
 export const defaultThresholding = 0;
-export const tesseractThreshList = [
-    { value: 0, description: "Otsu (por defeito)"},
-    { value: 1, description: "LeptonicaOtsu"},
-    { value: 2, description: "Sauvola"},
-]
+export const tesseractThreshList = () => [
+    { value: 0, description: i18next.t("threshold.otsu") },
+    { value: 1, description: i18next.t("threshold.leptonica") },
+    { value: 2, description: i18next.t("threshold.sauvola") },
+];
 
 export const defaultConfig = {
     lang: defaultLangs,
@@ -69,7 +71,7 @@ export const defaultConfig = {
     engineMode: defaultEngineMode,
     segmentMode: defaultSegmentationMode,
     thresholdMethod: defaultThresholding,
-}
+};
 
 export const emptyConfig = {
     lang: [],
@@ -80,4 +82,4 @@ export const emptyConfig = {
     thresholdMethod: -1,
     dpiVal: null,
     otherParams: null,
-}
+};

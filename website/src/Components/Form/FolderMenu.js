@@ -8,6 +8,8 @@ import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 
+import {withTranslation} from "react-i18next";
+
 import Notification from 'Components/Notifications/Notification';
 
 const API_URL = `${window.location.protocol}//${window.location.host}/${process.env.REACT_APP_API_URL}`;
@@ -98,14 +100,14 @@ class FolderMenu extends React.Component {
                 <Modal open={this.state.open}>
                     <Box sx={style}>
                         <Typography id="modal-modal-title" variant="h6" component="h2">
-                            Crie uma nova pasta
+                            {this.props.t("create new folder")}
                         </Typography>
                         <TextField
                             required
                             ref={this.textField}
-                            label="Nome da pasta"
+                            label={this.props.t("folder name")}
                             error={this.state.textFieldValue.length === 0 || folderNameRegex.test(this.state.textFieldValue)}
-                            helperText="O nome não pode começar por '_' nem conter '/' ou '\'"
+                            helperText={this.props.t("folder name extra")}
                             onChange={this.textFieldUpdate}
                             onKeyUp={e => { if (e.key === 'Enter') { this.createFolder() }}}
                             variant="outlined"
@@ -117,7 +119,7 @@ class FolderMenu extends React.Component {
                             sx={{border: '1px solid black', mt: '0.5rem', mr: '1rem'}}
                             onClick={() => this.createFolder()}
                         >
-                            Criar
+                            {this.props.t("create")}
                         </Button>
 
                         <IconButton disabled={this.state.buttonDisabled} sx={crossStyle} aria-label="close" onClick={() => this.closeMenu()}>
@@ -136,4 +138,4 @@ FolderMenu.defaultProps = {
     submitCallback: null,
 }
 
-export default FolderMenu;
+export default withTranslation()(FolderMenu);

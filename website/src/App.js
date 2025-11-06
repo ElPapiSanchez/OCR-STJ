@@ -5,6 +5,9 @@ import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs";
 import "dayjs/locale/pt";
 
+import "./i18n";
+import { useTranslation } from "react-i18next";
+
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Typography from "@mui/material/Typography";
@@ -60,6 +63,9 @@ const MODEL = STJ;
 
 function App() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+    const { t, i18n } = useTranslation();
+
     const login = () => {
         setIsAuthenticated(true);
     };
@@ -253,6 +259,7 @@ function App() {
                             display: "flex",
                             flexDirection: "row",
                             justifyContent: "center",
+                             position: "relative",
                          }}
                     >
                         <img
@@ -277,8 +284,8 @@ function App() {
                         >
                             {
                                 this.getPrivateSpaceId()
-                                    ? `Espaço Privado - ${this.getPrivateSpaceId()}`
-                                    : "OCR - Reconhecimento Ótico de Caracteres"
+                                    ? t("private space") + ' - ' + this.getPrivateSpaceId()
+                                    : t("title")
                             }
                         </Typography>
 
@@ -299,7 +306,7 @@ function App() {
                             }
 
                             <span style={{margin: 0, alignContent: "center"}}>
-                                {`Versão: ${VERSION}`}
+                                {t("version") + ': ' + VERSION}
                             </span>
 
                             {/* TODO: update help document */}
@@ -318,6 +325,48 @@ function App() {
                                 Manual de Utilizador
                             </Button>
                         </Box>
+                    </Box>
+
+                    <Box
+                        sx={{
+                            display: "flex",
+                            justifyContent: "flex-end",
+                            alignItems: "center",
+                            width: "95%",
+                            margin: "0 auto",
+                            marginTop: "0.3rem",
+                            gap: "0.5rem",
+                        }}
+                    >
+                        <Button
+                            variant="text"
+                            size="small"
+                            onClick={() => i18n.changeLanguage("pt")}
+                            sx={{
+                                minWidth: "auto",
+                                color: i18n.language === "pt" ? "primary.main" : "text.primary",
+                                textTransform: "none",
+                                fontWeight: i18n.language === "pt" ? "bold" : "normal",
+                                padding: 0,
+                            }}
+                        >
+                            PT
+                        </Button>
+                        <Typography variant="body2" sx={{ color: "text.secondary" }}>/</Typography>
+                        <Button
+                            variant="text"
+                            size="small"
+                            onClick={() => i18n.changeLanguage("en")}
+                            sx={{
+                                minWidth: "auto",
+                                color: i18n.language === "en" ? "primary.main" : "text.primary",
+                                textTransform: "none",
+                                fontWeight: i18n.language === "en" ? "bold" : "normal",
+                                padding: 0,
+                            }}
+                        >
+                            EN
+                        </Button>
                     </Box>
 
                     <Box sx={{
@@ -343,7 +392,7 @@ function App() {
                             >
                                 {
                                     this.state.currentFolderPathList.map((folder, index) => {
-                                        const name = index > 0 ? folder : "Início";
+                                        const name = index > 0 ? folder : t("start");
                                         const folderDepth = this.state.currentFolderPathList.length;
 
                                         if (this.state.searchMenu && index > 0)

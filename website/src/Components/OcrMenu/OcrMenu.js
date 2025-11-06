@@ -1,6 +1,8 @@
 import React from 'react';
 import axios from "axios";
 
+import {withTranslation} from "react-i18next";
+
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Button from '@mui/material/Button';
@@ -40,6 +42,13 @@ class OcrMenu extends React.Component {
     constructor(props) {
         super(props);
         const usingDefault = this.props.customConfig == null;  // null or undefined
+        const engines = engineList();
+        const modes = tesseractModeList();
+        const segments = tesseractSegmentList();
+        const thresholds = tesseractThreshList();
+        const outputs = tesseractOutputsList();
+        outputs[outputs.length - 2].disabled = !this.props.isSinglePage && !this.props.isFolder;
+        outputs[outputs.length - 1].disabled = !this.props.isSinglePage && !this.props.isFolder;
         this.state = {
             ...emptyConfig,
             presetsList: [],
@@ -47,10 +56,11 @@ class OcrMenu extends React.Component {
             defaultConfig: defaultConfig,
             // lists of options in state, to allow changing them dynamically depending on other choices
             // e.g. when choosing an OCR engine that has different parameter values
-            engineOptions: engineList,
-            engineModeOptions: tesseractModeList,
-            segmentModeOptions: tesseractSegmentList,
-            thresholdMethodOptions: tesseractThreshList,
+            engineOptions: engines,
+            engineModeOptions: modes,
+            segmentModeOptions: segments,
+            thresholdMethodOptions: thresholds,
+            outputOptions: outputs,
             usingDefault: usingDefault,
             uncommittedChanges: false,
             loaded: false,  // true if default configuration has been fetched and page is ready
@@ -58,8 +68,8 @@ class OcrMenu extends React.Component {
         }
 
         // Disable options restricted to single-page if configuring for multi-page documents
-        tesseractOutputsList[tesseractOutputsList.length-2]["disabled"] = !this.props.isSinglePage && !this.props.isFolder;  // hOCR output
-        tesseractOutputsList[tesseractOutputsList.length-1]["disabled"] = !this.props.isSinglePage && !this.props.isFolder;  // ALTO output
+        //tesseractOutputsList[tesseractOutputsList.length-2]["disabled"] = !this.props.isSinglePage && !this.props.isFolder;  // hOCR output
+        //tesseractOutputsList[tesseractOutputsList.length-1]["disabled"] = !this.props.isSinglePage && !this.props.isFolder;  // ALTO output
 
         this.confirmLeave = React.createRef();
         this.successNot = React.createRef();
@@ -303,7 +313,7 @@ class OcrMenu extends React.Component {
                         component="h2"
                         className="toolbarTitle"
                     >
-                        Configurar OCR {this.props.isFolder ? 'da pasta' : 'do documento'}
+                        {this.props.t("configure ocr")} {this.props.isFolder ? this.props.t("of folder") : this.props.t("of document")}
                     </Typography>
                 </Box>
 
@@ -318,7 +328,7 @@ class OcrMenu extends React.Component {
                             <TextField
                                 {...params}
                                 required
-                                placeholder="Escolher configuração predefinida"
+                                placeholder={this.props.t("choose preset")}
                                 variant="outlined"
                                 size="small"
                                 sx={{
@@ -344,7 +354,7 @@ class OcrMenu extends React.Component {
                         startIcon={<RotateLeft />}
                         onClick={() => this.restoreDefault()}
                     >
-                        Valores Por Defeito
+                        {this.props.t("default values")}
                     </Button>
                     <Button
                         disabled={!valid || !this.state.uncommittedChanges}
@@ -354,7 +364,7 @@ class OcrMenu extends React.Component {
                         startIcon={<SaveIcon />}
                         onClick={() => this.saveConfig()}
                     >
-                        Guardar
+                        {this.props.t("save")}
                     </Button>
                     <Button
                         disabled={!valid || !this.state.uncommittedChanges}
@@ -364,7 +374,7 @@ class OcrMenu extends React.Component {
                         startIcon={<CheckRoundedIcon />}
                         onClick={() => this.saveConfig(true)}
                     >
-                        Terminar
+                        {this.props.t("finish")}
                     </Button>
                 </Box>
             </Box>
@@ -396,8 +406,8 @@ class OcrMenu extends React.Component {
                     display: 'flex',
                     flexDirection: 'column',
                 }}>
-                    <CheckboxList title={"Formatos de resultado"}
-                                  options={tesseractOutputsList}
+                    <CheckboxList title={this.props.t("output formats")}
+                                  options={this.state.outputOptions}
                                   checked={this.state.outputs}
                                   onChangeCallback={this.setOutputList}
                                   required
@@ -408,8 +418,8 @@ class OcrMenu extends React.Component {
                     display: 'flex',
                     flexDirection: 'column',
                 }}>
-                    <CheckboxList title={"Língua"}
-                                  options={tesseractLangList}
+                    <CheckboxList title={this.props.t("language")}
+                                  options={tesseractLangList()}
                                   checked={this.state.lang}
                                   onChangeCallback={this.setLangList}
                                   required
@@ -424,7 +434,7 @@ class OcrMenu extends React.Component {
                     width: '30%',
                 }}>
                     <TextField ref={this.dpiField}
-                               label="DPI (Dots Per Inch)"
+                               label={this.props.t("dpi")}
                                slotProps={{htmlInput: { inputMode: "numeric", pattern: "[1-9][0-9]*" }}}
                                error={isNaN(this.state.dpiVal)
                                    || (this.state.dpiVal !== null
@@ -440,7 +450,7 @@ class OcrMenu extends React.Component {
                     />
 
                     <FormControl className="simpleDropdown borderTop">
-                        <FormLabel id="label-ocr-engine-select">Motor de OCR</FormLabel>
+                        <FormLabel id="label-ocr-engine-select">{this.props.t("ocr engine")}</FormLabel>
                         <RadioGroup
                             aria-labelledby="label-ocr-engine-select"
                             value={this.state.engine}
@@ -454,7 +464,7 @@ class OcrMenu extends React.Component {
                     </FormControl>
 
                     <FormControl className="simpleDropdown borderTop">
-                        <FormLabel id="label-engine-type-select">Modo do motor</FormLabel>
+                        <FormLabel id="label-engine-type-select">{this.props.t("engine mode")}</FormLabel>
                         <RadioGroup
                             aria-labelledby="label-engine-type-select"
                             value={this.state.engineMode}
@@ -468,7 +478,7 @@ class OcrMenu extends React.Component {
                     </FormControl>
 
                     <FormControl className="simpleDropdown borderTop">
-                        <FormLabel id="label-segmentation-select">Segmentação</FormLabel>
+                        <FormLabel id="label-segmentation-select">{this.props.t("segmentation")}</FormLabel>
                         <RadioGroup
                             aria-labelledby="label-segmentation-select"
                             value={this.state.segmentMode}
@@ -482,7 +492,7 @@ class OcrMenu extends React.Component {
                     </FormControl>
 
                     <FormControl className="simpleDropdown borderTop">
-                        <FormLabel id="label-thresholding-select">Thresholding</FormLabel>
+                        <FormLabel id="label-thresholding-select">{this.props.t("thresholding")}</FormLabel>
                         <RadioGroup
                             aria-labelledby="label-thresholding-select"
                             value={this.state.thresholdMethod}
@@ -496,7 +506,7 @@ class OcrMenu extends React.Component {
                     </FormControl>
 
                     <TextField ref={this.moreParams}
-                               label="Parâmetros adicionais"
+                               label={this.props.t("aditional parameters")}
                                value={this.state.otherParams}
                                onChange={(e) => this.changeAdditionalParams(e.target.value)}
                                variant='outlined'
@@ -545,4 +555,4 @@ OcrMenu.defaultProps = {
     showStorageForm: null,
 }
 
-export default OcrMenu;
+export default withTranslation()(OcrMenu);

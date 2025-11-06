@@ -1,10 +1,13 @@
 import React from 'react';
 
+import {useTranslation} from "react-i18next";
+
 import Button from "@mui/material/Button";
 import UndoIcon from "@mui/icons-material/Undo";
 
 
 const ReturnButton = ({ disabled = false, returnFunction = null, sx = {} }) => {
+    const { t } = useTranslation();
     return (
         <Button
             disabled={disabled}
@@ -19,7 +22,7 @@ const ReturnButton = ({ disabled = false, returnFunction = null, sx = {} }) => {
                 ':hover': { bgcolor: '#ddd' },
             }, sx)}
         >
-            Voltar
+            {t("back")}
         </Button>
     );
 }

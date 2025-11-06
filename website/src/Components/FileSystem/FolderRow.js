@@ -1,6 +1,8 @@
 import React from 'react';
 import Box from '@mui/material/Box';
 
+import {withTranslation} from "react-i18next";
+
 import TableCell from '@mui/material/TableCell';
 import TableRow from '@mui/material/TableRow';
 
@@ -118,7 +120,7 @@ class FolderRow extends React.Component {
             >
                 <Tooltip
                     placement="right"
-                    title="A pasta não contém documentos"
+                    title={this.props.t("folder without files")}
                     disableFocusListener={!isNaN(nDocs) && nDocs !== 0}
                     disableHoverListener={!isNaN(nDocs) && nDocs !== 0}
                     disableTouchListener={!isNaN(nDocs) && nDocs !== 0}
@@ -192,9 +194,9 @@ class FolderRow extends React.Component {
 
                 <TableCell className="explorerCell detailsCell" align='left'>
                     <span>
-                        {nDocs} documento(s)
+                        {nDocs} {this.props.t("document")}(s)
                         {'\n'}
-                        {nSubfolders} sub-pasta(s)
+                        {nSubfolders} {this.props.t("sub-folder")}(s)
                     </span>
                 </TableCell>
 
@@ -228,4 +230,4 @@ FolderRow.defaultProps = {
     deleteItem: null
 }
 
-export default FolderRow;
+export default withTranslation()(FolderRow);
