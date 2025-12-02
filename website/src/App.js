@@ -253,7 +253,8 @@ function App() {
         render() {
             const buttonsDisabled = this.state.ocrMenu || this.state.searchMenu || this.state.layoutMenu || this.state.editingMenu;
             return (
-                <Box className="App" sx={{height: "100vh", display: "flex", flexDirection: "column"}}>
+                <Box className={`App ${MODEL === STJ ? "theme-stj" : "theme-un"}`}
+                     sx={{height: "100vh", display: "flex", flexDirection: "column"}}>
                     <Box className="header"
                          sx={{
                             display: "flex",

@@ -8,7 +8,7 @@ import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 
-import {withTranslation} from "react-i18next";
+import i18n from "i18next";
 
 import Notification from 'Components/Notifications/Notification';
 
@@ -79,17 +79,29 @@ class FolderMenu extends React.Component {
                 "_private": this.props._private
             })
         })
-        .then(response => {return response.json()})
-        .then(data => {
-            this.setState({ buttonDisabled: false });
-            if (data.success) {
-                this.successNot.current.openNotif("Pasta criada com sucesso");
+            .then(response => {return response.json()})
+            .then(data => {
+                this.setState({ buttonDisabled: false });
+                if (data.success) {
+                    this.successNot.current.openNotif("Pasta criada com sucesso");
 
-                this.closeMenu(this.props.submitCallback);
-            } else {
-                this.errorNot.current.openNotif(data.error);
-            }
-        });
+                    this.closeMenu(this.props.submitCallback);
+                } else {
+                    this.errorNot.current.openNotif(data.error);
+                }
+            });
+    }
+
+    componentDidMount() {
+        console.log("%c[FolderMenu] Mounted", "color: green; font-weight: bold;");
+    }
+
+    componentWillUnmount() {
+        console.log("%c[FolderMenu] Unmounted", "color: red; font-weight: bold;");
+    }
+
+    componentDidUpdate(prevProps, prevState, snapshot) {
+        console.log("%c[FolderMenu] Updated", "color: red; font-weight: bold;");
     }
 
     render() {
@@ -100,14 +112,14 @@ class FolderMenu extends React.Component {
                 <Modal open={this.state.open}>
                     <Box sx={style}>
                         <Typography id="modal-modal-title" variant="h6" component="h2">
-                            {this.props.t("create new folder")}
+                            {i18n.t("create new folder")}
                         </Typography>
                         <TextField
                             required
                             ref={this.textField}
-                            label={this.props.t("folder name")}
+                            label={i18n.t("folder name")}
                             error={this.state.textFieldValue.length === 0 || folderNameRegex.test(this.state.textFieldValue)}
-                            helperText={this.props.t("folder name extra")}
+                            helperText={i18n.t("folder name extra")}
                             onChange={this.textFieldUpdate}
                             onKeyUp={e => { if (e.key === 'Enter') { this.createFolder() }}}
                             variant="outlined"
@@ -119,7 +131,7 @@ class FolderMenu extends React.Component {
                             sx={{border: '1px solid black', mt: '0.5rem', mr: '1rem'}}
                             onClick={() => this.createFolder()}
                         >
-                            {this.props.t("create")}
+                            {i18n.t("create")}
                         </Button>
 
                         <IconButton disabled={this.state.buttonDisabled} sx={crossStyle} aria-label="close" onClick={() => this.closeMenu()}>
@@ -138,4 +150,4 @@ FolderMenu.defaultProps = {
     submitCallback: null,
 }
 
-export default withTranslation()(FolderMenu);
+export default FolderMenu;

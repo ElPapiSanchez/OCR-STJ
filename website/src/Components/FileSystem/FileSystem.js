@@ -315,9 +315,19 @@ class FileExplorer extends React.Component {
      * Open the folder menu
      */
     createFolder() {
+        console.log("[FileSystem] createFolder called");
+
         let path = this.props.current_folder;
         if (this.props._private) { path = this.props.spaceId + '/' + path }
-        this.folderMenu.current.openMenu(path);
+
+        console.log("[FileSystem] folderMenu ref:", this.folderMenu);
+
+        if (this.folderMenu.current) {
+            console.log("[FileSystem] Calling openMenu() with path:", path);
+            this.folderMenu.current.openMenu(path);
+        } else {
+            console.warn("[FileSystem] FolderMenu ref is null!");
+        }
     }
 
     showStorageForm(errorMessage) {
@@ -1128,132 +1138,132 @@ class FileExplorer extends React.Component {
                 <FullStorageMenu ref={this.storageMenu}/>
                 {
                     this.props.ocrMenu
-                    ? <OcrMenu _private={this.props._private}
-                               spaceId={this.props._private ? this.props.spaceId : ""}
-                               current_folder={this.props.current_folder}
-                               filename={this.props.current_file_name}
-                               isFolder={this.props.ocrTargetIsFolder}
-                               isSinglePage={this.props.ocrTargetIsSinglePage}
-                               customConfig={this.props.customConfig}
-                               setCurrentCustomConfig={this.props.setCurrentCustomConfig}
-                               closeOCRMenu={this.closeOCRMenu}
-                               showStorageForm={this.showStorageForm}/>
-                    : this.props.layoutMenu
-                    ? <LayoutMenu _private={this.props._private}
-                                  spaceId={this.props._private ? this.props.spaceId : ""}
-                                  current_folder={this.props.current_folder}
-                                  filename={this.props.current_file_name}
-                                  configureOCR={this.configureOCR}
-                                  closeLayoutMenu={this.closeLayoutMenu}/>
-                    : this.props.editingMenu
-                    ? <EditingMenu _private={this.props._private}
+                        ? <OcrMenu _private={this.props._private}
                                    spaceId={this.props._private ? this.props.spaceId : ""}
                                    current_folder={this.props.current_folder}
                                    filename={this.props.current_file_name}
-                                   closeEditingMenu={this.closeEditingMenu}/>
-                    :
-                    <>
-                    <Box className="toolbar">
-                        <Box sx={{display: "flex", flexDirection: "row", justifyContent: "left"}}>
-                            <ReturnButton
-                                disabled={this.props.current_folder === "" && (!this.props._private || this.props.current_file_name == null)}
-                                returnFunction={this.props.returnToParentFolder}
-                            />
+                                   isFolder={this.props.ocrTargetIsFolder}
+                                   isSinglePage={this.props.ocrTargetIsSinglePage}
+                                   customConfig={this.props.customConfig}
+                                   setCurrentCustomConfig={this.props.setCurrentCustomConfig}
+                                   closeOCRMenu={this.closeOCRMenu}
+                                   showStorageForm={this.showStorageForm}/>
+                        : this.props.layoutMenu
+                            ? <LayoutMenu _private={this.props._private}
+                                          spaceId={this.props._private ? this.props.spaceId : ""}
+                                          current_folder={this.props.current_folder}
+                                          filename={this.props.current_file_name}
+                                          configureOCR={this.configureOCR}
+                                          closeLayoutMenu={this.closeLayoutMenu}/>
+                            : this.props.editingMenu
+                                ? <EditingMenu _private={this.props._private}
+                                               spaceId={this.props._private ? this.props.spaceId : ""}
+                                               current_folder={this.props.current_folder}
+                                               filename={this.props.current_file_name}
+                                               closeEditingMenu={this.closeEditingMenu}/>
+                                :
+                                <>
+                                    <Box className="toolbar">
+                                        <Box sx={{display: "flex", flexDirection: "row", justifyContent: "left"}}>
+                                            <ReturnButton
+                                                disabled={this.props.current_folder === "" && (!this.props._private || this.props.current_file_name == null)}
+                                                returnFunction={this.props.returnToParentFolder}
+                                            />
 
-                            <Button
-                                variant="contained"
-                                startIcon={<CreateNewFolderIcon/>}
-                                onClick={() => this.createFolder()}
-                                className="menuButton menuFunctionButton noMarginRight"
-                                sx={{marginLeft: '0.5rem'}}
-                            >
-                                {this.props.t("new folder")}
-                            </Button>
+                                            <Button
+                                                variant="contained"
+                                                startIcon={<CreateNewFolderIcon/>}
+                                                onClick={() => this.createFolder()}
+                                                className="menuButton menuFunctionButton noMarginRight"
+                                                sx={{marginLeft: '0.5rem'}}
+                                            >
+                                                {this.props.t("new folder")}
+                                            </Button>
 
-                            <Button
-                                disabled={
-                                    /* in private space, root level can have docs */
-                                    this.props.current_folder === "" && !this.props._private
-                                }
-                                variant="contained"
-                                startIcon={<NoteAddIcon/>}
-                                onClick={() => this.createFile()}
-                                className="menuButton menuFunctionButton noMarginRight"
-                            >
-                                {this.props.t("new document")}
-                            </Button>
-                        </Box>
+                                            <Button
+                                                disabled={
+                                                    /* in private space, root level can have docs */
+                                                    this.props.current_folder === "" && !this.props._private
+                                                }
+                                                variant="contained"
+                                                startIcon={<NoteAddIcon/>}
+                                                onClick={() => this.createFile()}
+                                                className="menuButton menuFunctionButton noMarginRight"
+                                            >
+                                                {this.props.t("new document")}
+                                            </Button>
+                                        </Box>
 
-                        {this.props.spaceId
-                            ? <Button
-                                variant="contained"
-                                startIcon={<LockIcon/>}
-                                onClick={() => this.props.leavePrivateSpace()}
-                                className="menuButton"
-                                color="error"
-                                sx={{
-                                    marginLeft: "1rem",
-                                    marginTop: "auto",
-                                    marginBottom: "auto",
-                                    marginRight: "0.5rem",
-                                }}
-                            >
-                                {this.props.t("leave space")};
-                            </Button>
-                            : <Button
-                                variant="contained"
-                                startIcon={<LockIcon/>}
-                                onClick={() => this.props.createPrivateSpace()}
-                                className="menuButton"
-                                sx={{
-                                    marginLeft: "1rem",
-                                    marginTop: "auto",
-                                    marginBottom: "auto"
-                                }}
-                            >
-                                {this.props.t("private space")}
-                            </Button>
-                        }
-                    </Box>
+                                        {this.props.spaceId
+                                            ? <Button
+                                                variant="contained"
+                                                startIcon={<LockIcon/>}
+                                                onClick={() => this.props.leavePrivateSpace()}
+                                                className="menuButton"
+                                                color="error"
+                                                sx={{
+                                                    marginLeft: "1rem",
+                                                    marginTop: "auto",
+                                                    marginBottom: "auto",
+                                                    marginRight: "0.5rem",
+                                                }}
+                                            >
+                                                {this.props.t("leave space")};
+                                            </Button>
+                                            : <Button
+                                                variant="contained"
+                                                startIcon={<LockIcon/>}
+                                                onClick={() => this.props.createPrivateSpace()}
+                                                className="menuButton"
+                                                sx={{
+                                                    marginLeft: "1rem",
+                                                    marginTop: "auto",
+                                                    marginBottom: "auto"
+                                                }}
+                                            >
+                                                {this.props.t("private space")}
+                                            </Button>
+                                        }
+                                    </Box>
 
-                    <Box
-                        className="menuContent"
-                    >
-                        <Notification message={""} severity={"success"} ref={this.successNot}/>
-                        <Notification message={""} severity={"error"} ref={this.errorNot}/>
+                                    <Box
+                                        className="menuContent"
+                                    >
+                                        <Notification message={""} severity={"success"} ref={this.successNot}/>
+                                        <Notification message={""} severity={"error"} ref={this.errorNot}/>
 
-                        <FolderMenu
-                            ref={this.folderMenu}
-                            _private={this.props._private}
-                            submitCallback={this.fetchFiles}
-                        />
-                        <OcrPopup
-                            ref={this.ocrPopup}
-                            _private={this.props._private}
-                            submitCallback={this.fetchInfo}
-                            showStorageForm={this.showStorageForm}
-                        />
-                        <DeletePopup
-                            ref={this.deletePopup}
-                            _private={this.props._private}
-                            submitCallback={this.fetchFiles}
-                        />
-                        {
-                            this.props._private && this.state.fetched
-                            ? <PrivateSpaceMenu
-                                    ref={this.privateSpaceMenu}
-                                    maxAge={this.state.maxAge}
-                                    rowRefsLength={this.rowRefs.length}
-                                    createFile={this.createFile}
-                            />
-                            : null
-                        }
+                                        <FolderMenu
+                                            ref={this.folderMenu}
+                                            _private={this.props._private}
+                                            submitCallback={this.fetchFiles}
+                                        />
+                                        <OcrPopup
+                                            ref={this.ocrPopup}
+                                            _private={this.props._private}
+                                            submitCallback={this.fetchInfo}
+                                            showStorageForm={this.showStorageForm}
+                                        />
+                                        <DeletePopup
+                                            ref={this.deletePopup}
+                                            _private={this.props._private}
+                                            submitCallback={this.fetchFiles}
+                                        />
+                                        {
+                                            this.props._private && this.state.fetched
+                                                ? <PrivateSpaceMenu
+                                                    ref={this.privateSpaceMenu}
+                                                    maxAge={this.state.maxAge}
+                                                    rowRefsLength={this.rowRefs.length}
+                                                    createFile={this.createFile}
+                                                />
+                                                : null
+                                        }
 
-                        {
-                            this.generateTable()
-                        }
-                    </Box>
-                    </>
+                                        {
+                                            this.generateTable()
+                                        }
+                                    </Box>
+                                </>
                 }
             </>
         );

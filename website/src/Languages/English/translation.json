@@ -105,5 +105,7 @@
     "segmentation": "Segmentation",
     "thresholding": "Thresholding",
     "additional parameters": "Additional Parameters",
-    "choose preset": "Choose preset configuration"
+    "choose preset": "Choose preset configuration",
+    "lose results": "You will lose your last results and previous changes!",
+    "begin": "Start"
 }

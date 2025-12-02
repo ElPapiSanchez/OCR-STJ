@@ -22,20 +22,27 @@
     --primary-red: #BA1514;
     --primary-gold: #C2A340;
     --secondary-gold: #F4ECCE;
+    --un-dark-blue: #00678F;
+    --un-main-blue: #009EDB;
+    --un-bright-blue: #28C3FF;
+    --un-dark-red: #8F2800;
+    --un-main-red: #DB3D00;
+    --un-bright-red: #FF6428;
+    --black: #000000;
 }
 
 div.header {
-    background-color: var(--secondary-gold);
+    background-color: var(--header-bg);
     border-bottom: 1px solid #dee2e6;
 }
 
 h1.fancy-font {
     font-family: 'Cinzel', serif;
-    color: var(--primary-red);
+    color: var(--header-text);
 }
 
 .red-link{
-    color: var(--primary-red) !important;
+    color: var(--link-color) !important;
 }
 
 body {
@@ -91,7 +98,7 @@ body {
     color: black;
 }
 
-.MuiBox-root.actionButton, .MuiButtonBase-root.actionButton {
+.MuiBox-root.actionButton, .MuiButtonBase-root.actionButton {   /* ...button in main menu */
     color: #1976d2;
 }
 
@@ -116,12 +123,18 @@ span.toolbarTitle, .MuiTypography-root.toolbarTitle {
 }
 
 .MuiButton-contained.menuFunctionButton {  /* overrides React MUI styles */
-    border: 1px solid black;
+    border: 1px solid var(--button-border);
+    background-color: var(--button-bg);
+    color: #000000;
     height: 2rem;
     text-transform: none;
     margin-right: 1rem;
     margin-top: 0.5rem;
     width: fit-content;
+}
+
+.MuiButton-contained.menuFunctionButton:hover {
+    background-color: var(--button-hover-bg);
 }
 
 .noMarginRight {
@@ -433,4 +446,28 @@ img:hover {
     -ms-user-select: none; /* Internet Explorer/Edge */
     user-select: none; /* Non-prefixed version, currently
                           supported by Chrome, Edge, Opera and Firefox */
+}
+
+/* ========================
+   THEME: STJ
+   ======================== */
+.theme-stj {
+    --header-bg: var(--secondary-gold);
+    --header-text: var(--primary-red);
+    --link-color: var(--primary-red);
+    --button-border: #000;
+    --button-bg: #ffffff;
+    --button-hover-bg: #ddd;
+}
+
+/* ========================
+   THEME: UN_ARMS
+   ======================== */
+.theme-un {
+    --header-bg: var(--un-dark-blue);
+    --header-text: #ffffff;
+    --link-color: var(--un-bright-blue);
+    --button-border: #00678F;
+    --button-bg: #e6f3fa;
+    --button-hover-bg: #cce8f5;
 }

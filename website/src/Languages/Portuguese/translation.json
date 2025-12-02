@@ -105,5 +105,7 @@
     "segmentation": "Segmentação",
     "thresholding": "Thresholding",
     "additional parameters": "Parâmetros adicionais",
-    "choose preset": "Escolher configuração predefinida"
+    "choose preset": "Escolher configuração predefinida",
+    "lose results": "Irá perder os resultados e alterações anteriores!",
+    "begin": "Começar"
 }
