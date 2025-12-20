@@ -487,7 +487,7 @@ class FileExplorer extends React.Component {
         let path = this.props.current_folder + '/' + file;
         if (this.props._private) { path = this.props.spaceId + '/' + path }
 
-        fetch(API_URL + '/get_' + type + '?_private=' + this.props._private + '&path=' + path, {
+        fetch(API_URL + '/get_' + type + '?_private=' + this.props._private + '&path=' + encodeURIComponent(path), {
             method: 'GET'
         })
         .then(response => {return response.blob()})
@@ -508,7 +508,7 @@ class FileExplorer extends React.Component {
         let path = this.props.current_folder + '/' + file;
         if (this.props._private) { path = this.props.spaceId + '/' + path }
 
-        fetch(API_URL + '/get_entities?_private=' + this.props._private + '&path=' + path, {
+        fetch(API_URL + '/get_entities?_private=' + this.props._private + '&path=' + encodeURIComponent(path), {
             method: 'GET'
         })
         .then(response => {return response.blob()})
@@ -529,7 +529,7 @@ class FileExplorer extends React.Component {
         let path = this.props.current_folder + '/' + file;
         if (this.props._private) { path = this.props.spaceId + '/' + path }
 
-        fetch( API_URL + '/request_entities?_private=' + this.props._private + '&path=' + path, {
+        fetch( API_URL + '/request_entities?_private=' + this.props._private + '&path=' + encodeURIComponent(path), {
             method: 'GET'
         })
         .then(response => {return response.json()})
@@ -587,7 +587,7 @@ class FileExplorer extends React.Component {
         let path = this.props.current_folder + '/' + file;
         if (this.props._private) { path = this.props.spaceId + '/' + path }
 
-        fetch(API_URL + '/get_original?_private=' + this.props._private + '&path=' + path, {
+        fetch(API_URL + '/get_original?_private=' + this.props._private + '&path=' + encodeURIComponent(path), {
             method: 'GET'
         })
         .then(response => {return response.blob()})
@@ -611,7 +611,7 @@ class FileExplorer extends React.Component {
         let path = this.props.current_folder + '/' + file;
         if (this.props._private) { path = this.props.spaceId + '/' + path }
 
-        fetch(API_URL + '/get_images?_private=' + this.props._private + '&path=' + path, {
+        fetch(API_URL + '/get_images?_private=' + this.props._private + '&path=' + encodeURIComponent(path), {
             method: 'GET'
         })
         .then(response => {return response.blob()})
@@ -1208,7 +1208,7 @@ class FileExplorer extends React.Component {
                                                     marginRight: "0.5rem",
                                                 }}
                                             >
-                                                {this.props.t("leave space")};
+                                                {this.props.t("leave space")}
                                             </Button>
                                             : <Button
                                                 variant="contained"

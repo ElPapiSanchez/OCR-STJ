@@ -228,10 +228,22 @@ class DocumentRow extends React.Component {
 
     render() {
         const info = this.state.info;
-        const usingCustomConfig = info?.["config"] && info["config"] !== "default";
-        const hasLayoutBoxes = info?.["has_layout"];
-        const status = info?.["status"];
-        const buttonsDisabled = status.stage !== "waiting" && status.stage !== "post-ocr";
+        
+        // Return loading state if info is not available yet
+        if (!info) {
+            return (
+                <TableRow className="explorerRow">
+                    <TableCell className="explorerCell" colSpan={6} align="center">
+                        <CircularProgress size="1rem" />
+                    </TableCell>
+                </TableRow>
+            );
+        }
+        
+        const usingCustomConfig = info["config"] && info["config"] !== "default";
+        const hasLayoutBoxes = info["has_layout"];
+        const status = info["status"];
+        const buttonsDisabled = !status || (status?.stage !== "waiting" && status?.stage !== "post-ocr");
         const uploadIsStuck = info["upload_stuck"] === true;
         return (
             <>
@@ -253,7 +265,7 @@ class DocumentRow extends React.Component {
 
                 <Box sx={{display: "flex", flexDirection: "column"}}>
                     <MenuItem
-                        disabled={buttonsDisabled && (status.stage !== "error" || uploadIsStuck)}
+                        disabled={buttonsDisabled && (status?.stage !== "error" || uploadIsStuck)}
                         onClick={(e) => this.performOCR(e, usingCustomConfig)}
                     >
                         <IconButton className="actionButton">
@@ -263,7 +275,7 @@ class DocumentRow extends React.Component {
                     </MenuItem>
 
                     <MenuItem
-                        disabled={buttonsDisabled && (status.stage !== "error" || uploadIsStuck)}
+                        disabled={buttonsDisabled && (status?.stage !== "error" || uploadIsStuck)}
                         onClick={(e) => this.configureOCR(e, usingCustomConfig)}
                     >
                         <IconButton
@@ -279,7 +291,7 @@ class DocumentRow extends React.Component {
                     </MenuItem>
 
                     <MenuItem
-                        disabled={buttonsDisabled && (status.stage !== "error" || uploadIsStuck)}
+                        disabled={buttonsDisabled && (status?.stage !== "error" || uploadIsStuck)}
                         onClick={(e) => this.createLayout(e)}
                     >
                         <IconButton
@@ -295,7 +307,7 @@ class DocumentRow extends React.Component {
                     </MenuItem>
 
                     <MenuItem
-                        disabled={status.stage !== "post-ocr"}
+                        disabled={status?.stage !== "post-ocr"}
                         onClick={(e) => this.editFile(e)}
                     >
                         <IconButton className="actionButton">
@@ -309,7 +321,7 @@ class DocumentRow extends React.Component {
                             ? null
                             : (info?.["indexed"]
                                 ? <MenuItem
-                                    disabled={status.stage !== "post-ocr"}
+                                    disabled={status?.stage !== "post-ocr"}
                                     onClick={(e) => this.removeIndex(e)}
                                 >
                                     <IconButton className="negActionButton">
@@ -319,7 +331,7 @@ class DocumentRow extends React.Component {
                                 </MenuItem>
 
                                 : <MenuItem
-                                    disabled={status.stage !== "post-ocr"}
+                                    disabled={status?.stage !== "post-ocr"}
                                     onClick={(e) => this.indexFile(e)}
                                 >
                                     <IconButton className="actionButton">
@@ -330,7 +342,7 @@ class DocumentRow extends React.Component {
                     }
 
                     <MenuItem
-                        disabled={buttonsDisabled && status.stage !== "error"}
+                        disabled={buttonsDisabled && status?.stage !== "error"}
                         onClick={(e) => this.delete(e)}
                     >
                         <IconButton className="negActionButton">
@@ -352,7 +364,7 @@ class DocumentRow extends React.Component {
                 <TableRow
                     className={"explorerRow" + (this.state.contextMenu ? " targeted" : "")}
                     onContextMenu={(e) => this.handleContextMenu(e)}
-                    sx={{ cursor: loadingStages.has(status.stage) ? "progress" : "context-menu" }}
+                    sx={{ cursor: loadingStages.has(status?.stage) ? "progress" : "context-menu" }}
                 >
                     <TableCell className="explorerCell optionsCell">
                         <IconButton
@@ -366,9 +378,9 @@ class DocumentRow extends React.Component {
                     <TableCell
                         className="explorerCell thumbnailCell"
                         align="left"
-                        sx={{ cursor: loadingStages.has(status.stage) ? "progress" : "pointer" }}
+                        sx={{ cursor: loadingStages.has(status?.stage) ? "progress" : "pointer" }}
                     >
-                        {loadingStages.has(status.stage)
+                        {loadingStages.has(status?.stage)
                             ? <CircularProgress sx={{ml: '1rem', mr: '1rem', flexShrink: "0"}} size='1rem'/>
                             : <img
                                 src={`${BASE_URL}/${this.props._private ? 'private' : 'images'}/${this.props.thumbnails.small}`}
@@ -383,10 +395,10 @@ class DocumentRow extends React.Component {
                         className="explorerCell nameCell"
                         align="left"
                         onClick={() => {
-                            if (!loadingStages.has(status.stage))
+                            if (!loadingStages.has(status?.stage))
                                 this.setState({expanded: !this.state.expanded})
                         }}
-                        sx={{ cursor: loadingStages.has(status.stage) ? "progress" : "pointer" }}
+                        sx={{ cursor: loadingStages.has(status?.stage) ? "progress" : "pointer" }}
                     >
                         <Box sx={{
                             display: 'flex',
@@ -396,7 +408,7 @@ class DocumentRow extends React.Component {
                             <IconButton
                                 aria-label="expandir"
                                 size="small"
-                                loading={loadingStages.has(status.stage)}
+                                loading={loadingStages.has(status?.stage)}
                                 disableRipple
                             >
                                 {this.state.expanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
@@ -435,7 +447,7 @@ class DocumentRow extends React.Component {
                             </Box>
                         </TableCell>
 
-                        : status.stage === "uploading"
+                        : status?.stage === "uploading"
                             ? <TableCell className="explorerCell stateCell infoCell" align='left'>
                                 <Box className="stateBox">
                                     <CircularProgress sx={{ml: '1rem', mr: '1rem', flexShrink: "0"}} size='1rem'/>
@@ -443,7 +455,7 @@ class DocumentRow extends React.Component {
                                 </Box>
                             </TableCell>
 
-                        : status.stage === "preparing"
+                        : status?.stage === "preparing"
                             ? <TableCell className="explorerCell stateCell infoCell" align='left'>
                                 <Box className="stateBox">
                                     <CircularProgress sx={{ml: '1rem', mr: '1rem', flexShrink: "0"}} size='1rem'/>
@@ -452,20 +464,20 @@ class DocumentRow extends React.Component {
                             </TableCell>
                         : null
 
-                    : status.stage === "error"
+                    : status?.stage === "error"
                         ? <TableCell className="explorerCell stateCell errorCell" align='left'>
                             <Box className="stateBox">
                                 <span>{this.props.t("upload error")}</span>
                             </Box>
                         </TableCell>
 
-                    : status.stage === "waiting"
+                    : status?.stage === "waiting"
                     ? <TableCell className="explorerCell stateCell waitingCell" align='left'>
                         <Box className="stateBox">
                         </Box>
                     </TableCell>
 
-                    : status.stage === "ocr"
+                    : status?.stage === "ocr"
                     ? <TableCell className="explorerCell stateCell infoCell" align='left'>
                         <Box className="stateBox">
                             <CircularProgress sx={{ml: '1rem', mr: '1rem', flexShrink: "0"}} size='1rem' />
@@ -482,7 +494,7 @@ class DocumentRow extends React.Component {
                         </Box>
                     </TableCell>
 
-                    : status.stage === "exporting"
+                    : status?.stage === "exporting"
                     ? <TableCell className="explorerCell stateCell infoCell" align='left'>
                         <Box className="stateBox">
                             <CircularProgress sx={{ml: '1rem', mr: '1rem', flexShrink: "0"}} size='1rem' />
@@ -497,7 +509,7 @@ class DocumentRow extends React.Component {
                             </Box>
                         </TableCell>
 
-                    : status.stage === "post-ocr"
+                    : status?.stage === "post-ocr"
                     ? <TableCell className="explorerCell stateCell successCell" align='left'>
                         <Box className="stateBox">
                             <DoneIcon color="primary" />

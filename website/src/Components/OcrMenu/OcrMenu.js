@@ -93,13 +93,16 @@ class OcrMenu extends React.Component {
         event.returnValue = '';
     }
 
-    fetchDefaultConfig() {
+    fetchDefaultConfig(savedConfig = null) {
         axios.get(API_URL + '/default-config')
             .then(({ data }) => {
                 if (!this.state.loaded) {
                     // entering config menu, set initial config
-                    const initialConfig = Object.assign({...data}, this.props.customConfig);
-                    this.setState({...initialConfig, defaultConfig: data, loaded: true});
+                    // Priority: savedConfig (from backend) > props.customConfig > default
+                    const configToApply = savedConfig || this.props.customConfig;
+                    const usingDefault = !configToApply || configToApply === "default";
+                    const initialConfig = Object.assign({...data}, configToApply);
+                    this.setState({...initialConfig, defaultConfig: data, loaded: true, usingDefault: usingDefault});
                 } else {
                     this.setState({defaultConfig: data});
                 }
@@ -108,10 +111,39 @@ class OcrMenu extends React.Component {
                 this.errorNot.current.openNotif("Não foi possível obter a configuração por defeito mais atual");
                 if (!this.state.loaded) {
                     // entering config, use hardcoded default for initial config
-                    const initialConfig = Object.assign({...defaultConfig}, this.props.customConfig);
-                    this.setState({...initialConfig, loaded: true});
+                    const configToApply = savedConfig || this.props.customConfig;
+                    const usingDefault = !configToApply || configToApply === "default";
+                    const initialConfig = Object.assign({...defaultConfig}, configToApply);
+                    this.setState({...initialConfig, loaded: true, usingDefault: usingDefault});
                 }
             });
+    }
+
+    /**
+     * Fetch the document's saved OCR config from the backend.
+     * This ensures we always get the latest saved config.
+     */
+    fetchDocumentConfig() {
+        const path = (this.props.spaceId + '/' + this.props.current_folder + '/' + this.props.filename).replace(/^\//, '');
+        axios.get(API_URL + '/get-config', {
+            params: {
+                _private: this.props._private,
+                path: path
+            }
+        })
+        .then(({ data }) => {
+            if (data.success && data.config) {
+                // Document has a saved custom config
+                this.fetchDefaultConfig(data.config);
+            } else {
+                // No saved config - use default
+                this.fetchDefaultConfig(null);
+            }
+        })
+        .catch(err => {
+            // Fallback to using prop or default
+            this.fetchDefaultConfig(this.props.customConfig);
+        });
     }
 
     fetchConfigPreset(name) {
@@ -147,7 +179,8 @@ class OcrMenu extends React.Component {
     }
 
     componentDidMount() {
-        this.fetchDefaultConfig();
+        // Fetch the document's saved config first, which then fetches default config
+        this.fetchDocumentConfig();
         this.fetchPresetsList();
         this.interval = setInterval(() => {
             this.fetchDefaultConfig();

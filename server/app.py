@@ -52,7 +52,9 @@ from src.utils.file import get_file_parsed
 from src.utils.file import get_filesystem
 from src.utils.file import get_structure_info
 from src.utils.file import get_word_count
+from src.utils.file import INPUTS_PATH
 from src.utils.file import json_to_text
+from src.utils.file import OUTPUTS_PATH
 from src.utils.file import PRIVATE_PATH
 from src.utils.file import save_file_layouts
 from src.utils.file import TEMP_PATH
@@ -163,40 +165,69 @@ def bad_request(message: str = "Bad request syntax or unsupported method"):
 
 
 def format_path(request_data):
+    """
+    Format request path to get inputs_path, files_path, and outputs_path.
+
+    Returns: (inputs_path, files_path, outputs_path, is_private)
+    """
     is_private = "_private" in request_data and (
         request_data["_private"] == "true" or request_data["_private"] is True
     )
+    stripped_path = request_data["path"].strip("/")
+
     if is_private:
-        stripped_path = request_data["path"].strip("/")
         private_space = stripped_path.split("/")[0]
         if private_space == "":  # path for private space must start with space ID
             return bad_request("Path in private space must start with space ID")
-        return safe_join(PRIVATE_PATH, stripped_path), True
+        # For private spaces, use subdirectories within the private space
+        relative_path = "/".join(stripped_path.split("/")[1:])  # path without space ID
+        inputs_path = safe_join(f"{PRIVATE_PATH}/{private_space}/_inputs", relative_path)
+        files_path = safe_join(f"{PRIVATE_PATH}/{private_space}/_files", relative_path)
+        outputs_path = safe_join(f"{PRIVATE_PATH}/{private_space}/_outputs", relative_path)
     else:
-        return safe_join(FILES_PATH, request_data["path"].strip("/")), False
+        inputs_path = safe_join(INPUTS_PATH, stripped_path)
+        files_path = safe_join(FILES_PATH, stripped_path)
+        outputs_path = safe_join(OUTPUTS_PATH, stripped_path)
+
+    return inputs_path, files_path, outputs_path, is_private
 
 
 def format_filesystem_path(request_data):
+    """
+    Format request path for filesystem operations.
+
+    Returns: (inputs_path, files_path, outputs_path, inputs_base, files_base, private_space, is_private)
+    """
     is_private = "_private" in request_data and (
         request_data["_private"] == "true" or request_data["_private"] is True
     )
     private_space = None
-    filesystem_path = FILES_PATH
+
     if is_private:
         stripped_path = request_data["path"].strip("/")
         private_space = stripped_path.split("/")[0]
         if private_space == "":  # path for private space must start with space ID
             return bad_request("Path in private space must start with space ID")
-        filesystem_path = safe_join(PRIVATE_PATH, private_space)
-        if filesystem_path is None:
-            abort(HTTPStatus.NOT_FOUND)
-        path = safe_join(PRIVATE_PATH, stripped_path)
-    else:
-        path = safe_join(FILES_PATH, request_data["path"].strip("/"))
 
-    if path is None:
+        # Base paths for the private space
+        inputs_base = f"{PRIVATE_PATH}/{private_space}/_inputs"
+        files_base = f"{PRIVATE_PATH}/{private_space}/_files"
+
+        # Full paths including the relative path
+        relative_path = "/".join(stripped_path.split("/")[1:])  # path without space ID
+        inputs_path = safe_join(inputs_base, relative_path) if relative_path else inputs_base
+        files_path = safe_join(files_base, relative_path) if relative_path else files_base
+        outputs_path = safe_join(f"{PRIVATE_PATH}/{private_space}/_outputs", relative_path)
+    else:
+        inputs_base = INPUTS_PATH
+        files_base = FILES_PATH
+        inputs_path = safe_join(INPUTS_PATH, request_data["path"].strip("/"))
+        files_path = safe_join(FILES_PATH, request_data["path"].strip("/"))
+        outputs_path = safe_join(OUTPUTS_PATH, request_data["path"].strip("/"))
+
+    if inputs_path is None or files_path is None:
         abort(HTTPStatus.NOT_FOUND)
-    return path, filesystem_path, private_space, is_private
+    return inputs_path, files_path, outputs_path, inputs_base, files_base, private_space, is_private
 
 
 # Endpoint requires a non-empty 'path' argument
@@ -284,16 +315,16 @@ def ignore_csrf_if_exempt():
 @app.route("/files", methods=["GET"])
 def get_file_system():
     try:
-        # TODO: alter frontend to use info of "current folder", and reply with info of requested folder
+        # Get filesystem structure from _inputs, metadata from _files
         if "path" not in request.values or request.values["path"] == "":
-            filesystem = get_filesystem(FILES_PATH)
+            filesystem = get_filesystem(INPUTS_PATH)
             filesystem["maxAge"] = os.environ.get("MAX_PRIVATE_SPACE_AGE", "1")
             return filesystem
 
-        _, filesystem_path, private_space, is_private = format_filesystem_path(
+        _, _, _, inputs_base, files_base, private_space, is_private = format_filesystem_path(
             request.values
         )
-        filesystem = get_filesystem(filesystem_path, private_space, is_private)
+        filesystem = get_filesystem(inputs_base, private_space, is_private)
         filesystem["maxAge"] = os.environ.get("MAX_PRIVATE_SPACE_AGE", "1")
         return filesystem
     except FileNotFoundError:
@@ -303,14 +334,14 @@ def get_file_system():
 @app.route("/info", methods=["GET"])
 def get_info():
     try:
-        # TODO: alter frontend to use info of "current folder", and reply with info of requested folder
+        # Get info using _inputs for structure, _files for metadata
         if "path" not in request.values or request.values["path"] == "":
-            return get_filesystem(FILES_PATH)
+            return get_filesystem(INPUTS_PATH)
 
-        _, filesystem_path, private_space, is_private = format_filesystem_path(
+        _, _, _, inputs_base, files_base, private_space, is_private = format_filesystem_path(
             request.values
         )
-        return {"info": get_structure_info(filesystem_path, private_space, is_private)}
+        return {"info": get_structure_info(inputs_base, files_base, private_space, is_private)}
     except FileNotFoundError:
         abort(HTTPStatus.NOT_FOUND)
 
@@ -325,8 +356,8 @@ def create_folder():
     ):
         return bad_request("Missing parameter 'path' or 'folder'")
 
-    path, _ = format_path(data)
-    if path is None:
+    inputs_path, files_path, outputs_path, is_private = format_path(data)
+    if inputs_path is None or files_path is None:
         abort(HTTPStatus.NOT_FOUND)
 
     folder = data["folder"]
@@ -337,13 +368,19 @@ def create_folder():
             "error": "O nome da pasta não pode começar com '_' nem conter '/' ou '\\'",
         }
 
-    new_folder_path = safe_join(path, folder)
-    if os.path.exists(new_folder_path):
+    # Check if folder exists in _inputs
+    new_inputs_folder = safe_join(inputs_path, folder)
+    new_files_folder = safe_join(files_path, folder)
+
+    if os.path.exists(new_inputs_folder):
         return {"success": False, "error": "Já existe uma pasta com esse nome"}
 
-    os.mkdir(new_folder_path)
+    # Create folder in both _inputs and _files
+    os.makedirs(new_inputs_folder, exist_ok=True)
+    os.makedirs(new_files_folder, exist_ok=True)
 
-    with open(f"{new_folder_path}/_data.json", "w", encoding="utf-8") as f:
+    # Metadata goes in _files
+    with open(f"{new_files_folder}/_data.json", "w", encoding="utf-8") as f:
         json.dump(
             {
                 "type": "folder",
@@ -354,7 +391,6 @@ def create_folder():
             ensure_ascii=False,
         )
 
-    # TODO: alter front-end and response to get info only from current folder
     return {
         "success": True,
         "message": f"Pasta {folder} criada com sucesso",
@@ -364,12 +400,12 @@ def create_folder():
 @app.route("/get-text-content", methods=["GET"])
 @requires_arg_path
 def get_text_content():
-    path, is_private = format_path(request.values)
-    if path is None:
+    inputs_path, files_path, outputs_path, is_private = format_path(request.values)
+    if files_path is None:
         abort(HTTPStatus.NOT_FOUND)
-    totalPages = len(os.listdir(path + "/_ocr_results"))
-    doc, words = get_file_parsed(path, is_private)
-    data = get_data(safe_join(path, "_data.json"))
+    totalPages = len(os.listdir(files_path + "/_ocr_results"))
+    doc, words = get_file_parsed(files_path, is_private)
+    data = get_data(safe_join(files_path, "_data.json"))
     edited_without_recreate = (
         data["edited_results"] if "edited_results" in data else False
     )
@@ -385,50 +421,50 @@ def get_text_content():
 @app.route("/get_txt_delimited", methods=["GET"])
 @requires_arg_path
 def get_txt_delimited():
-    path, _ = format_path(request.values)
-    if path is None:
+    inputs_path, files_path, outputs_path, is_private = format_path(request.values)
+    if outputs_path is None:
         abort(HTTPStatus.NOT_FOUND)
-    return send_file(f"{path}/_export/_txt_delimited.txt")
+    return send_file(f"{outputs_path}/_txt_delimited.txt")
 
 
 @app.route("/get_txt", methods=["GET"])
 @requires_arg_path
 def get_txt():
-    path, _ = format_path(request.values)
-    if path is None:
+    inputs_path, files_path, outputs_path, is_private = format_path(request.values)
+    if outputs_path is None:
         abort(HTTPStatus.NOT_FOUND)
-    return send_file(f"{path}/_export/_txt.txt")
+    return send_file(f"{outputs_path}/_txt.txt")
 
 
 @app.route("/get_entities", methods=["GET"])
 @requires_arg_path
 def get_entities():
-    path, _ = format_path(request.values)
-    if path is None:
+    inputs_path, files_path, outputs_path, is_private = format_path(request.values)
+    if outputs_path is None:
         abort(HTTPStatus.NOT_FOUND)
-    return send_file(f"{path}/_export/_entities.json")
+    return send_file(f"{outputs_path}/_entities.json")
 
 
 # TODO: currently not used
 @app.route("/request_entities", methods=["GET"])
 @requires_arg_path
 def request_entities():
-    path, filesystem_path, private_space, is_private = format_filesystem_path(
+    inputs_path, files_path, outputs_path, inputs_base, files_base, private_space, is_private = format_filesystem_path(
         request.values
     )
-    data = get_data(path + "/_data.json")
+    data = get_data(files_path + "/_data.json")
 
     data["ner"] = {
         "error": False,
         "complete": False,
     }
 
-    update_json_file(f"{path}/_data.json", data)
+    update_json_file(f"{files_path}/_data.json", data)
 
-    celery.send_task("request_ner", kwargs={"data_folder": path}, ignore_result=True)
+    celery.send_task("request_ner", kwargs={"files_path": files_path, "outputs_path": outputs_path}, ignore_result=True)
     return {
         "success": True,
-        "filesystem": get_filesystem(filesystem_path, private_space, is_private),
+        "filesystem": get_filesystem(inputs_base, private_space, is_private),
     }
 
 
@@ -436,28 +472,37 @@ def request_entities():
 @app.route("/get_zip", methods=["GET"])
 @requires_arg_path
 def get_zip():
-    path, _ = format_path(request.values)
-    if path is None:
+    inputs_path, files_path, outputs_path, is_private = format_path(request.values)
+    if files_path is None:
         abort(HTTPStatus.NOT_FOUND)
     try:
-        celery.send_task("export_file", kwargs={"path": path, "filetype": "zip"}).get()
+        celery.send_task("export_file", kwargs={
+            "files_path": files_path,
+            "outputs_path": outputs_path,
+            "filetype": "zip"
+        }).get()
     except Exception:
         return {
             "success": False,
             "message": "Pelo menos um ficheiro está a ser processado. Tente mais tarde",
         }
     return send_file(
-        safe_join(path, f"{path.split('/')[-1]}.zip")
-    )  # filename == folder name
+        safe_join(outputs_path, f"{files_path.split('/')[-1]}.zip")
+    )
 
 
 @app.route("/get_pdf_indexed", methods=["GET"])
 @requires_arg_path
 def get_pdf_indexed():
-    path, _ = format_path(request.values)
-    if path is None:
+    inputs_path, files_path, outputs_path, is_private = format_path(request.values)
+    if files_path is None:
         abort(HTTPStatus.NOT_FOUND)
-    promise = celery.send_task("export_file", kwargs={"path": path, "filetype": "pdf"})
+    promise = celery.send_task("export_file", kwargs={
+        "files_path": files_path,
+        "outputs_path": outputs_path,
+        "inputs_path": inputs_path,
+        "filetype": "pdf"
+    })
     file = promise.get()
     return send_file(file)
 
@@ -465,12 +510,18 @@ def get_pdf_indexed():
 @app.route("/get_pdf", methods=["GET"])
 @requires_arg_path
 def get_pdf_simple():
-    path, _ = format_path(request.values)
-    if path is None:
+    inputs_path, files_path, outputs_path, is_private = format_path(request.values)
+    if files_path is None:
         abort(HTTPStatus.NOT_FOUND)
 
     promise = celery.send_task(
-        "export_file", kwargs={"path": path, "filetype": "pdf", "simple": True}
+        "export_file", kwargs={
+            "files_path": files_path,
+            "outputs_path": outputs_path,
+            "inputs_path": inputs_path,
+            "filetype": "pdf",
+            "simple": True
+        }
     )
     file = promise.get()
     return send_file(file)
@@ -479,38 +530,42 @@ def get_pdf_simple():
 @app.route("/get_csv", methods=["GET"])
 @requires_arg_path
 def get_csv():
-    path, _ = format_path(request.values)
-    if path is None:
+    inputs_path, files_path, outputs_path, is_private = format_path(request.values)
+    if outputs_path is None:
         abort(HTTPStatus.NOT_FOUND)
-    return send_file(f"{path}/_export/_index.csv")
+    return send_file(f"{outputs_path}/_index.csv")
 
 
 @app.route("/get_hocr", methods=["GET"])
 @requires_arg_path
 def get_hocr():
-    path, _ = format_path(request.values)
-    if path is None:
+    inputs_path, files_path, outputs_path, is_private = format_path(request.values)
+    if outputs_path is None:
         abort(HTTPStatus.NOT_FOUND)
-    return send_file(f"{path}/_export/_hocr.hocr")
+    return send_file(f"{outputs_path}/_hocr.hocr")
 
 
 @app.route("/get_alto", methods=["GET"])
 @requires_arg_path
 def get_alto():
-    path, _ = format_path(request.values)
-    if path is None:
+    inputs_path, files_path, outputs_path, is_private = format_path(request.values)
+    if outputs_path is None:
         abort(HTTPStatus.NOT_FOUND)
-    return send_file(f"{path}/_export/_xml.xml")
+    return send_file(f"{outputs_path}/_xml.xml")
 
 
 @app.route("/get_images", methods=["GET"])
 @requires_arg_path
 def get_images():
-    path, _ = format_path(request.values)
-    if path is None:
+    inputs_path, files_path, outputs_path, is_private = format_path(request.values)
+    if files_path is None:
         abort(HTTPStatus.NOT_FOUND)
 
-    promise = celery.send_task("export_file", kwargs={"path": path, "filetype": "imgs"})
+    promise = celery.send_task("export_file", kwargs={
+        "files_path": files_path,
+        "outputs_path": outputs_path,
+        "filetype": "imgs"
+    })
     file = promise.get()
     return send_file(file)
 
@@ -518,30 +573,42 @@ def get_images():
 @app.route("/get_original", methods=["GET"])
 @requires_arg_path
 def get_original():
-    path, _ = format_path(request.values)
-    if path is None:
+    inputs_path, files_path, outputs_path, is_private = format_path(request.values)
+    if inputs_path is None:
         abort(HTTPStatus.NOT_FOUND)
-    file_path = safe_join(path, path.split("/")[-1])  # filename == folder name
-    return send_file(file_path)
+    # Original file is now in _inputs directly (not in a subfolder)
+    return send_file(inputs_path)
 
 
 @app.route("/delete-path", methods=["POST"])
 @requires_json_path
 def delete_path():
-    path, filesystem_path, private_space, _ = format_filesystem_path(request.json)
+    inputs_path, files_path, outputs_path, inputs_base, files_base, private_space, is_private = format_filesystem_path(request.json)
     try:
         # avoid deleting roots
-        # filesystem_path is either FILES_PATH or PRIVATE_PATH/private_space -> another endpoint deletes priv. spaces
         if (
-            os.path.samefile(FILES_PATH, path)
-            or os.path.samefile(PRIVATE_PATH, path)
-            or os.path.samefile(path, filesystem_path)
+            os.path.samefile(INPUTS_PATH, inputs_path)
+            or os.path.samefile(FILES_PATH, files_path)
+            or os.path.samefile(OUTPUTS_PATH, outputs_path)
+            or os.path.samefile(PRIVATE_PATH, inputs_path)
+            or os.path.samefile(inputs_path, inputs_base)
+            or os.path.samefile(files_path, files_base)
         ):
             abort(HTTPStatus.NOT_FOUND)
 
         # FIXME: uncomment when searching feature is improved and re-enabled
-        # delete_structure(es, path)
-        shutil.rmtree(path)
+        # delete_structure(es, files_path)
+
+        # Delete from all three locations
+        if os.path.exists(inputs_path):
+            if os.path.isfile(inputs_path):
+                os.remove(inputs_path)
+            else:
+                shutil.rmtree(inputs_path)
+        if os.path.exists(files_path):
+            shutil.rmtree(files_path)
+        if os.path.exists(outputs_path):
+            shutil.rmtree(outputs_path)
     except FileNotFoundError:
         abort(HTTPStatus.NOT_FOUND)
 
@@ -554,17 +621,17 @@ def delete_path():
 @app.route("/set-upload-stuck", methods=["POST"])
 @requires_json_path
 def set_upload_stuck():
-    path, _ = format_path(request.json)
-    if path is None:
+    inputs_path, files_path, outputs_path, is_private = format_path(request.json)
+    if files_path is None:
         abort(HTTPStatus.NOT_FOUND)
 
     try:
-        data = get_data(f"{path}/_data.json")
+        data = get_data(f"{files_path}/_data.json")
     except FileNotFoundError:
         abort(HTTPStatus.NOT_FOUND)
     data["upload_stuck"] = True
     data["status"]["stage"] = "error"
-    update_json_file(f"{path}/_data.json", data)
+    update_json_file(f"{files_path}/_data.json", data)
 
     return {
         "success": True,
@@ -575,44 +642,54 @@ def set_upload_stuck():
 #####################################
 # FILES ROUTES
 #####################################
-def is_filename_reserved(path, filename):
+def is_filename_reserved(inputs_path, files_path, filename):
     """
-    Check if a filename is reserved
+    Check if a filename is reserved.
     A filename can be reserved if:
-        - It is a folder
-        - It is a file that is being processed
+        - It exists as a file or folder in _inputs
+        - It is a file that is being processed (metadata in _files)
 
-    :param path: path to the file
+    :param inputs_path: path in _inputs to check
+    :param files_path: path in _files to check metadata
     :param filename: filename to check
-
     :return: True if reserved, False otherwise
     """
-    with os.scandir(path) as dir_content:
-        for f in dir_content:
-            # If f is a folder
-            if not f.is_dir():
-                continue
-            if f.name == filename:
-                return True
+    # Check if file exists directly in _inputs
+    if os.path.exists(safe_join(inputs_path, filename)):
+        return True
 
-            data = get_data(f"{f.path}/_data.json")
-            if "original_filename" in data and data["original_filename"] == filename:
-                return True
+    # Check if there's a processing folder in _files
+    files_target = safe_join(files_path, filename)
+    if os.path.exists(files_target) and os.path.isdir(files_target):
+        return True
+
+    # Check metadata for original_filename
+    if os.path.exists(files_path):
+        with os.scandir(files_path) as dir_content:
+            for f in dir_content:
+                if not f.is_dir():
+                    continue
+                try:
+                    data = get_data(f"{f.path}/_data.json")
+                    if "original_filename" in data and data["original_filename"] == filename:
+                        return True
+                except (FileNotFoundError, json.JSONDecodeError):
+                    continue
     return False
 
 
-def find_valid_filename(path, basename, extension):
+def find_valid_filename(inputs_path, files_path, basename, extension):
     """
-    Find valid name for a file so it doesn't overwrite another file
+    Find valid name for a file so it doesn't overwrite another file.
 
-    :param path: path to the file
+    :param inputs_path: path in _inputs
+    :param files_path: path in _files
     :param basename: basename of the file
     :param extension: extension of the file
-
     :return: valid filename
     """
     id = 1
-    while is_filename_reserved(path, f"{basename} ({id}).{extension}"):
+    while is_filename_reserved(inputs_path, files_path, f"{basename} ({id}).{extension}"):
         id += 1
 
     return f"{basename} ({id}).{extension}"
@@ -631,27 +708,52 @@ def prepare_upload():
     if "name" not in data or data["name"] == "":
         return bad_request("Missing parameter 'name'")
 
-    path, filesystem_path, private_space, is_private = format_filesystem_path(data)
+    inputs_path, files_path, outputs_path, inputs_base, files_base, private_space, is_private = format_filesystem_path(data)
     filename = data["name"]
 
-    if is_filename_reserved(path, filename):
+    if is_filename_reserved(inputs_path, files_path, filename):
         basename = get_file_basename(filename)
         extension = get_file_extension(filename)
-        filename = find_valid_filename(path, basename, extension)
+        filename = find_valid_filename(inputs_path, files_path, basename, extension)
 
-    target = safe_join(path, filename)
+    # Path for original file in _inputs
+    inputs_target = safe_join(inputs_path, filename)
+    # Path for document folder in _files (named after the file)
+    files_target = safe_join(files_path, filename)
+    # Path for outputs in _outputs (named after the file)
+    outputs_target = safe_join(outputs_path, filename)
 
-    # Create document folder and subfolders
-    os.mkdir(target)
-    os.mkdir(target + "/_export")
-    os.mkdir(target + "/_images")
-    os.mkdir(target + "/_layouts")
-    os.mkdir(target + "/_ocr_results")
-    os.mkdir(target + "/_pages")
-    os.mkdir(target + "/_thumbnails")
+    # Ensure parent directories exist
+    os.makedirs(inputs_path, exist_ok=True)
+    os.makedirs(files_path, exist_ok=True)
+    os.makedirs(outputs_path, exist_ok=True)
+
+    # Ensure parent folder has _data.json (for proper folder metadata)
+    if files_path != FILES_PATH and not os.path.exists(f"{files_path}/_data.json"):
+        with open(f"{files_path}/_data.json", "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "type": "folder",
+                    "creation": get_current_time(),
+                },
+                f,
+                indent=2,
+                ensure_ascii=False,
+            )
+
+    # Create document metadata folder in _files with subfolders
+    os.makedirs(files_target, exist_ok=True)
+    os.makedirs(files_target + "/_images", exist_ok=True)
+    os.makedirs(files_target + "/_layouts", exist_ok=True)
+    os.makedirs(files_target + "/_ocr_results", exist_ok=True)
+    os.makedirs(files_target + "/_pages", exist_ok=True)
+    os.makedirs(files_target + "/_thumbnails", exist_ok=True)
+
+    # Create outputs folder
+    os.makedirs(outputs_target, exist_ok=True)
 
     extension = filename.split(".")[-1]
-    with open(f"{target}/_data.json", "w", encoding="utf-8") as f:
+    with open(f"{files_target}/_data.json", "w", encoding="utf-8") as f:
         json.dump(
             {
                 "type": "file",
@@ -673,13 +775,25 @@ def prepare_upload():
     return {"success": True, "filename": filename}
 
 
-def join_chunks(target_path, filename, total_count, temp_file_path):
-    # Save the file
-    with open(f"{target_path}/{filename}", "wb") as f:
+def join_chunks(inputs_target, files_target, filename, total_count, temp_file_path):
+    """
+    Join uploaded chunks into the final file.
+
+    :param inputs_target: path where the original file should be saved in _inputs
+    :param files_target: path to document folder in _files
+    :param filename: the filename
+    :param total_count: total number of chunks
+    :param temp_file_path: path to temporary chunk storage
+    """
+    # Save the file to _inputs
+    with open(inputs_target, "wb") as f:
         for i in range(total_count):
             with open(f"{temp_file_path}/{i + 1}", "rb") as chunk:
                 f.write(chunk.read())
-    celery.send_task("prepare_file", kwargs={"path": target_path}, ignore_result=True)
+    celery.send_task("prepare_file", kwargs={
+        "inputs_path": inputs_target,
+        "files_path": files_target
+    }, ignore_result=True)
     shutil.rmtree(temp_file_path)
 
 
@@ -703,24 +817,28 @@ def upload_file():
             "Missing file or parameter 'name', 'counter', or 'totalCount'"
         )
 
-    path, _ = format_path(request.form)
+    inputs_path, files_path, outputs_path, is_private = format_path(request.form)
     file = request.files["file"]
     filename = request.form["name"]
     counter = int(request.form["counter"])
     total_count = int(request.form["totalCount"])
 
-    temp_filename = safe_join(path, f"_{filename}").replace("/", "_")
-    target_path = safe_join(path, filename)  # path for document data is "path/filename"
-    file_path = safe_join(
-        target_path, filename
-    )  # file stored as "path/filename/filename"
+    temp_filename = safe_join(files_path, f"_{filename}").replace("/", "_")
+    # Original file goes to _inputs directly
+    inputs_target = safe_join(inputs_path, filename)
+    # Document metadata folder in _files
+    files_target = safe_join(files_path, filename)
 
     # If only one chunk, save the file directly
     if total_count == 1:
-        file.save(file_path)
+        # Save original file to _inputs
+        file.save(inputs_target)
 
         celery.send_task(
-            "prepare_file", kwargs={"path": target_path}, ignore_result=True
+            "prepare_file", kwargs={
+                "inputs_path": inputs_target,
+                "files_path": files_target
+            }, ignore_result=True
         )
 
         return {"success": True, "finished": True}
@@ -746,14 +864,14 @@ def upload_file():
         chunks_saved = len(os.listdir(f"{temp_file_path}"))
         stored = round(100 * chunks_saved / total_count, 2)
 
-        update_json_file(f"{target_path}/_data.json", {"stored": stored})
+        update_json_file(f"{files_target}/_data.json", {"stored": stored})
 
         if chunks_saved == total_count:
             del lock_system[temp_filename]
 
             Thread(
                 target=join_chunks,
-                args=(target_path, filename, total_count, temp_file_path),
+                args=(inputs_target, files_target, filename, total_count, temp_file_path),
             ).start()
 
             return {"success": True, "finished": True}
@@ -797,17 +915,42 @@ def get_presets_list():
     return config_names
 
 
+@app.route("/get-config", methods=["GET"])
+@requires_arg_path
+def get_doc_config():
+    """
+    Get the saved OCR config for a specific document.
+    Returns the config object or null if using default/not set.
+    """
+    inputs_path, files_path, outputs_path, is_private = format_path(request.values)
+    if files_path is None:
+        abort(HTTPStatus.NOT_FOUND)
+
+    data_path = f"{files_path}/_data.json"
+    try:
+        data = get_data(data_path)
+    except FileNotFoundError:
+        abort(HTTPStatus.NOT_FOUND)
+
+    config = data.get("config", None)
+    # Return null if no config or if set to "default"
+    if config == "default":
+        config = None
+
+    return {"success": True, "config": config}
+
+
 @app.route("/save-config", methods=["POST"])
 @requires_json_path
 def configure_ocr():
     req_data = request.json
     if "config" not in req_data:
         return bad_request("Missing parameter 'config'")
-    path, _ = format_path(req_data)
-    if path is None:
+    inputs_path, files_path, outputs_path, is_private = format_path(req_data)
+    if files_path is None:
         abort(HTTPStatus.NOT_FOUND)
 
-    data_path = f"{path}/_data.json"
+    data_path = f"{files_path}/_data.json"
     try:
         data = get_data(data_path)
     except FileNotFoundError:
@@ -842,24 +985,25 @@ def request_ocr():
         }
 
     req_data = request.json
-    path, _ = format_path(req_data)
-    if path is None:
+    inputs_path, files_path, outputs_path, is_private = format_path(req_data)
+    if files_path is None:
         abort(HTTPStatus.NOT_FOUND)
 
     config = req_data["config"] if "config" in req_data else None
     multiple = req_data["multiple"] if "multiple" in req_data else False
 
     if multiple:
-        files = [
-            f.path
-            for f in os.scandir(path)
-            if f.is_dir() and get_data(f"{f.path}/_data.json")["type"] == "file"
+        # For folder OCR, scan _files for document folders
+        files_list = [
+            (f.path, f"{outputs_path}/{f.name}")
+            for f in os.scandir(files_path)
+            if f.is_dir() and not f.name.startswith("_") and get_data(f"{f.path}/_data.json")["type"] == "file"
         ]
     else:
-        files = [path]
+        files_list = [(files_path, outputs_path)]
 
-    for f in files:
-        data_path = f"{f}/_data.json"
+    for f_path, o_path in files_list:
+        data_path = f"{f_path}/_data.json"
         try:
             data = get_data(data_path)
         except FileNotFoundError:
@@ -872,7 +1016,7 @@ def request_ocr():
             config = data["config"]
 
         # Remove indexed pages, which will become outdated
-        results_path = f"{f}/_ocr_results"
+        results_path = f"{f_path}/_ocr_results"
 
         # FIXME: uncomment when searching feature is improved and re-enabled
         """
@@ -891,13 +1035,15 @@ def request_ocr():
                     continue
         """
 
-        # Delete previous results
+        # Delete previous results in _files
         if os.path.exists(results_path):
             shutil.rmtree(results_path)
-        if os.path.exists(f"{f}/_export"):
-            shutil.rmtree(f"{f}/_export")
-        os.mkdir(f"{f}/_ocr_results")
-        os.mkdir(f"{f}/_export")
+        os.makedirs(f"{f_path}/_ocr_results", exist_ok=True)
+
+        # Delete previous outputs in _outputs
+        if os.path.exists(o_path):
+            shutil.rmtree(o_path)
+        os.makedirs(o_path, exist_ok=True)
 
         data.update(
             {
@@ -920,11 +1066,15 @@ def request_ocr():
         )
         update_json_file(data_path, data)
 
-        if os.path.exists(f"{f}/_images"):
-            shutil.rmtree(f"{f}/_images")
+        if os.path.exists(f"{f_path}/_images"):
+            shutil.rmtree(f"{f_path}/_images")
 
         celery.send_task(
-            "file_ocr", kwargs={"path": f, "config": config}, ignore_result=True
+            "file_ocr", kwargs={
+                "files_path": f_path,
+                "outputs_path": o_path,
+                "config": config
+            }, ignore_result=True
         )
 
     return {
@@ -1141,9 +1291,17 @@ def create_private_space():
                 ensure_ascii=False,
             )
 
-    os.mkdir(f"{PRIVATE_PATH}/{space_id}")
+    # Create the private space directory
+    space_path = f"{PRIVATE_PATH}/{space_id}"
+    os.mkdir(space_path)
 
-    with open(f"{PRIVATE_PATH}/{space_id}/_data.json", "w", encoding="utf-8") as f:
+    # Create the three subdirectories for the new structure
+    os.mkdir(f"{space_path}/_inputs")
+    os.mkdir(f"{space_path}/_files")
+    os.mkdir(f"{space_path}/_outputs")
+
+    # Create space metadata
+    with open(f"{space_path}/_data.json", "w", encoding="utf-8") as f:
         json.dump(
             {
                 "type": "folder",
@@ -1163,11 +1321,11 @@ def create_private_space():
 @app.route("/get-layouts", methods=["GET"])
 @requires_arg_path
 def get_layouts():
-    path, is_private = format_path(request.values)
-    if path is None:
+    inputs_path, files_path, outputs_path, is_private = format_path(request.values)
+    if files_path is None:
         abort(HTTPStatus.NOT_FOUND)
     try:
-        layouts, segmenting = get_file_layouts(path, is_private)
+        layouts, segmenting = get_file_layouts(files_path, is_private)
     except FileNotFoundError:
         abort(HTTPStatus.NOT_FOUND)
     return {"layouts": layouts, "segmenting": segmenting}
@@ -1180,21 +1338,21 @@ def save_layouts():
     if "layouts" not in data:
         return bad_request("Missing parameter 'layouts'")
 
-    path, _ = format_path(data)
-    if path is None:
+    inputs_path, files_path, outputs_path, is_private = format_path(data)
+    if files_path is None:
         abort(HTTPStatus.NOT_FOUND)
 
-    doc_data_path = f"{path}/_data.json"
+    doc_data_path = f"{files_path}/_data.json"
     lock_path = f"{doc_data_path}.lock"
     lock = FileLock(lock_path)
     with lock:
-        doc_data = get_data(f"{path}/_data.json", lock=lock)
+        doc_data = get_data(f"{files_path}/_data.json", lock=lock)
         if "segmenting" in doc_data and doc_data["segmenting"]:
             return {"segmenting": True}
 
     layouts = data["layouts"]
     try:
-        save_file_layouts(path, layouts)
+        save_file_layouts(files_path, layouts)
     except FileNotFoundError:
         abort(HTTPStatus.NOT_FOUND)
     return {"success": True}
@@ -1204,26 +1362,26 @@ def save_layouts():
 @app.route("/generate-automatic-layouts", methods=["GET"])
 @requires_arg_path
 def generate_automatic_layouts():
-    path, is_private = format_path(request.values)
-    if path is None:
+    inputs_path, files_path, outputs_path, is_private = format_path(request.values)
+    if files_path is None:
         abort(HTTPStatus.NOT_FOUND)
 
     use_hdbscan = False
     if "use_hdbscan" in request.values:
         use_hdbscan = request.values["use_hdbscan"] in ("true", "True")
 
-    data_path = f"{path}/_data.json"
+    data_path = f"{files_path}/_data.json"
     lock_path = f"{data_path}.lock"
     lock = FileLock(lock_path)
     with lock:
-        data = get_data(f"{path}/_data.json", lock=lock)
+        data = get_data(f"{files_path}/_data.json", lock=lock)
         if "segmenting" in data and data["segmenting"]:
             return {"segmenting": True}
     try:
         celery.send_task(
-            "auto_segment", kwargs={"path": path, "use_hdbscan": use_hdbscan}
+            "auto_segment", kwargs={"path": files_path, "use_hdbscan": use_hdbscan}
         ).get(timeout=60)
-        layouts, segmenting = get_file_layouts(path, is_private)
+        layouts, segmenting = get_file_layouts(files_path, is_private)
         return {"layouts": layouts, "segmenting": segmenting}
     except FileNotFoundError:
         abort(HTTPStatus.NOT_FOUND)
@@ -1693,8 +1851,28 @@ def proxy_flower(fullpath):
 #####################################
 # MAIN
 #####################################
+# Create the three main directories for the new structure
+if not os.path.exists(f"./{INPUTS_PATH}/"):
+    os.mkdir(f"./{INPUTS_PATH}/")
+
 if not os.path.exists(f"./{FILES_PATH}/"):
     os.mkdir(f"./{FILES_PATH}/")
+
+# Create root _data.json for _files if it doesn't exist
+if not os.path.exists(f"./{FILES_PATH}/_data.json"):
+    with open(f"./{FILES_PATH}/_data.json", "w", encoding="utf-8") as f:
+        json.dump(
+            {
+                "type": "folder",
+                "creation": get_current_time(),
+            },
+            f,
+            indent=2,
+            ensure_ascii=False,
+        )
+
+if not os.path.exists(f"./{OUTPUTS_PATH}/"):
+    os.mkdir(f"./{OUTPUTS_PATH}/")
 
 if not os.path.exists(f"./{TEMP_PATH}/"):
     os.mkdir(f"./{TEMP_PATH}/")

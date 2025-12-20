@@ -19,6 +19,8 @@ import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import EditIcon from "@mui/icons-material/Edit";
 
+import { withTranslation } from "react-i18next";
+
 import {
     engineList,
     tesseractLangList,
@@ -599,8 +601,8 @@ const ConfigManager = (props) => {
                         onClick={() => toggleEditingExistingConfig()}
                     >
                         {isEditingExistingConfig
-                            ? "Terminar"
-                            : "Alterar Configuração Existente"
+                            ? this.props.t("finish")
+                            : this.props.t("alter existing config")
                         }
                     </Button>
 

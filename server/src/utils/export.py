@@ -18,17 +18,18 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.pdfmetrics import getFont
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen.canvas import Canvas
+from src.utils.file import FILES_PATH
 from src.utils.file import get_current_time
 from src.utils.file import get_data
 from src.utils.file import get_file_basename
 from src.utils.file import get_file_size
 from src.utils.file import get_page_count
+from src.utils.file import INPUTS_PATH
 from src.utils.file import json_to_text
+from src.utils.file import OUTPUTS_PATH
+from src.utils.file import PRIVATE_PATH
 from src.utils.file import size_to_units
 from src.utils.file import update_json_file
-
-FILES_PATH = os.environ.get("FILES_PATH", "_files")
-PRIVATE_PATH = os.environ.get("PRIVATE_PATH", "_files/_private_spaces")
 
 OUT_DEFAULT_DPI = 150
 
@@ -37,8 +38,10 @@ OUT_DEFAULT_DPI = 150
 # GENERAL FUNCTIONS
 ####################################################
 def export_file(
-    path,
+    files_path,
     filetype,
+    outputs_path=None,
+    inputs_path=None,
     delimiter=False,
     force_recreate=False,
     simple=False,
@@ -47,20 +50,33 @@ def export_file(
     get_csv=False,
 ):
     """
-    Direct to the correct function based on the filetype
+    Direct to the correct function based on the filetype.
 
-    :param path: the path to the file
+    :param files_path: path to document folder in _files (for metadata and OCR results)
     :param filetype: the filetype to export to
+    :param outputs_path: path to document folder in _outputs (for writing exports)
+    :param inputs_path: path to original file in _inputs (for reading original if needed)
     :param delimiter: for a txt file, whether a delimiter should be added between pages
     :param force_recreate: whether the file should be recreated, if it already exists
     :param simple: for a PDF, whether it should be simple, rather than with index
     :param get_csv: for a PDF, whether a CSV should be generated additionally
     """
+    # Calculate outputs_path if not provided (for backward compatibility)
+    if outputs_path is None:
+        # Extract relative path and construct outputs path
+        relative_path = files_path.replace(FILES_PATH, "").strip("/")
+        outputs_path = f"{OUTPUTS_PATH}/{relative_path}"
+
+    # Ensure outputs directory exists
+    if not os.path.exists(outputs_path):
+        os.makedirs(outputs_path, exist_ok=True)
 
     if simple or get_csv or keep_temp or already_temp:
         # currently, keeping temp is only used for PDF
         return export_pdf(
-            path,
+            files_path,
+            outputs_path=outputs_path,
+            inputs_path=inputs_path,
             force_recreate=force_recreate,
             simple=simple,
             keep_temp=keep_temp,
@@ -71,30 +87,36 @@ def export_file(
     func = globals()[f"export_{filetype}"]
 
     if not delimiter:
-        return func(path, force_recreate=force_recreate)
+        return func(files_path, outputs_path=outputs_path, force_recreate=force_recreate)
 
-    return func(path, delimiter=delimiter, force_recreate=force_recreate)
+    return func(files_path, outputs_path=outputs_path, delimiter=delimiter, force_recreate=force_recreate)
 
 
-def export_from_existing(path: str, raw_results: dict | list, output_types: list):
+def export_from_existing(files_path: str, outputs_path: str, raw_results: dict | list, output_types: list):
     """
     Export result files from pre-existing output files.
 
     If raw_results is a dict, any contents whose keys are not in output_types are ignored.
 
-    If raw_results is a list of filenames of pre-generated results, the files should be in the _export folder, and
+    If raw_results is a list of filenames of pre-generated results, the files should be in the outputs folder, and
     any files whose extensions are not in output_types are ignored.
 
-    :param path: Path of the document to which the results refer.
+    :param files_path: Path to document folder in _files (for metadata).
+    :param outputs_path: Path to document folder in _outputs (for writing exports).
     :param raw_results: Dictionary of extension keys to respective contents in bytes, or list of filenames of the pregenerated results.
     :param output_types: List of output types to consider.
     """
-    data_file = f"{path}/_data.json"
+    data_file = f"{files_path}/_data.json"
+
+    # Ensure outputs directory exists
+    if not os.path.exists(outputs_path):
+        os.makedirs(outputs_path, exist_ok=True)
+
     data_update = {}
     if isinstance(raw_results, dict):  # results in memory, in dict
         for extension in raw_results.keys():
             if extension in output_types:
-                file_path = f"{path}/_export/_{extension}.{extension}"
+                file_path = f"{outputs_path}/_{extension}.{extension}"
                 with open(file_path, "wb") as f:
                     f.write(raw_results[extension])
                 creation_date = get_current_time()
@@ -104,15 +126,14 @@ def export_from_existing(path: str, raw_results: dict | list, output_types: list
                     "creation": creation_date,
                 }
                 if extension == "pdf":
-                    data_update[extension]["pages"] = get_page_count(path, "pdf")
+                    data_update[extension]["pages"] = get_page_count(files_path, "pdf")
 
     elif isinstance(raw_results, list):  # results stored in listed files
         for result in raw_results:
             _, ext = os.path.splitext(result)
             ext = ext.strip(".")
             if ext in output_types:
-                # raw results should be in /_export folder already
-                file_path = f"{path}/_export/_{ext}.{ext}"
+                file_path = f"{outputs_path}/_{ext}.{ext}"
                 os.rename(result, file_path)
                 creation_date = get_current_time()
                 data_update[ext] = {
@@ -121,7 +142,7 @@ def export_from_existing(path: str, raw_results: dict | list, output_types: list
                     "creation": creation_date,
                 }
                 if ext == "pdf":
-                    data_update[ext]["pages"] = get_page_count(path, "pdf")
+                    data_update[ext]["pages"] = get_page_count(files_path, "pdf")
 
     update_json_file(data_file, data_update)
 
@@ -129,41 +150,58 @@ def export_from_existing(path: str, raw_results: dict | list, output_types: list
 ####################################################
 # EXPORT TXT FUNCTIONS
 ####################################################
-def export_imgs(path, force_recreate=False):
+def export_imgs(files_path, outputs_path=None, force_recreate=False):
     """
-    Export the images as a .zip file
+    Export the images as a .zip file.
 
-    :param path: the path to the file
+    :param files_path: path to document folder in _files (contains _images subfolder)
+    :param outputs_path: path to document folder in _outputs (for writing zip)
     :param force_recreate: force the recreation of the file
-
     :return: the path to the exported file
     """
-    filename = f"{path}/_export/_images.zip"
+    # Calculate outputs_path if not provided
+    if outputs_path is None:
+        relative_path = files_path.replace(FILES_PATH, "").strip("/")
+        outputs_path = f"{OUTPUTS_PATH}/{relative_path}"
+
+    # Ensure outputs directory exists
+    if not os.path.exists(outputs_path):
+        os.makedirs(outputs_path, exist_ok=True)
+
+    filename = f"{outputs_path}/_images.zip"
     if os.path.exists(filename) and not force_recreate:
         return filename
 
-    shutil.make_archive(f"{path}/_export/_images", "zip", path, base_dir="_images")
+    shutil.make_archive(f"{outputs_path}/_images", "zip", files_path, base_dir="_images")
     return filename
 
 
-def export_txt(path, delimiter=False, force_recreate=False):
+def export_txt(files_path, outputs_path=None, delimiter=False, force_recreate=False):
     """
-    Export the file as a .txt file
+    Export the file as a .txt file.
 
-    :param path: the path to the file
+    :param files_path: path to document folder in _files (contains _ocr_results)
+    :param outputs_path: path to document folder in _outputs (for writing txt)
     :param delimiter: whether a delimiter should be added between pages
     :param force_recreate: force the recreation of the file
-
     :return: the path to the exported file
     """
+    # Calculate outputs_path if not provided
+    if outputs_path is None:
+        relative_path = files_path.replace(FILES_PATH, "").strip("/")
+        outputs_path = f"{OUTPUTS_PATH}/{relative_path}"
 
-    filename = f"{path}/_export/_txt.txt"
+    # Ensure outputs directory exists
+    if not os.path.exists(outputs_path):
+        os.makedirs(outputs_path, exist_ok=True)
+
+    filename = f"{outputs_path}/_txt.txt"
     if delimiter:
-        filename = f"{path}/_export/_txt_delimited.txt"
+        filename = f"{outputs_path}/_txt_delimited.txt"
     if os.path.exists(filename) and not force_recreate:
         return filename
 
-    ocr_folder = f"{path}/_ocr_results"
+    ocr_folder = f"{files_path}/_ocr_results"
 
     files = [
         os.path.join(ocr_folder, f)
@@ -190,21 +228,36 @@ def export_txt(path, delimiter=False, force_recreate=False):
 ####################################################
 # EXPORT CSV FUNCTIONS
 ####################################################
-def export_csv(path, force_recreate=False):
-    filename_csv = f"{path}/_export/_index.csv"
+def export_csv(files_path, outputs_path=None, force_recreate=False):
+    """
+    Export index words as a CSV file.
+
+    :param files_path: path to document folder in _files (contains _ocr_results)
+    :param outputs_path: path to document folder in _outputs (for writing csv)
+    :param force_recreate: force the recreation of the file
+    :return: the path to the exported file
+    """
+    # Calculate outputs_path if not provided
+    if outputs_path is None:
+        relative_path = files_path.replace(FILES_PATH, "").strip("/")
+        outputs_path = f"{OUTPUTS_PATH}/{relative_path}"
+
+    # Ensure outputs directory exists
+    if not os.path.exists(outputs_path):
+        os.makedirs(outputs_path, exist_ok=True)
+
+    filename_csv = f"{outputs_path}/_index.csv"
     if os.path.exists(filename_csv) and not force_recreate:
         return filename_csv
 
     filenames_asterisk = [
-        x for x in os.listdir(f"{path}/_ocr_results/") if x.endswith(".json")
+        x for x in os.listdir(f"{files_path}/_ocr_results/") if x.endswith(".json")
     ]
-    # pages = sorted(filenames_asterisk, key=lambda x: int(re.search(r'_(\d+)', x).group(1)))
-    # for page in pages:
 
     words = {}
     for i, page in enumerate(filenames_asterisk):
         page_basename = get_file_basename(page)
-        hocr_path = f"{path}/_ocr_results/{page_basename}.json"
+        hocr_path = f"{files_path}/_ocr_results/{page_basename}.json"
         index_words = find_index_words(hocr_path)
         for word in index_words:
             if word not in words:
@@ -236,7 +289,9 @@ def export_csv_from_words(filename_csv, index_data):
 # EXPORT PDF FUNCTIONS
 ####################################################
 def export_pdf(
-    path,
+    files_path,
+    outputs_path=None,
+    inputs_path=None,
     force_recreate=False,
     simple=False,
     keep_temp=False,
@@ -244,12 +299,30 @@ def export_pdf(
     get_csv=False,
 ):
     """
-    Export the file as a .pdf file
+    Export the file as a .pdf file.
+
+    :param files_path: path to document folder in _files (for metadata and OCR results)
+    :param outputs_path: path to document folder in _outputs (for writing PDF)
+    :param inputs_path: path to original file in _inputs (for reading original PDF if needed)
+    :param force_recreate: force recreation of the file
+    :param simple: generate simple PDF without index
+    :param keep_temp: keep temporary images after processing
+    :param already_temp: temporary images already exist
+    :param get_csv: also generate CSV index
     """
-    data_file = f"{path}/_data.json"
-    filename = f"{path}/_export/_pdf_indexed.pdf"
-    simple_filename = f"{path}/_export/_pdf.pdf"
-    filename_csv = f"{path}/_export/_index.csv"
+    # Calculate outputs_path if not provided
+    if outputs_path is None:
+        relative_path = files_path.replace(FILES_PATH, "").strip("/")
+        outputs_path = f"{OUTPUTS_PATH}/{relative_path}"
+
+    # Ensure outputs directory exists
+    if not os.path.exists(outputs_path):
+        os.makedirs(outputs_path, exist_ok=True)
+
+    data_file = f"{files_path}/_data.json"
+    filename = f"{outputs_path}/_pdf_indexed.pdf"
+    simple_filename = f"{outputs_path}/_pdf.pdf"
+    filename_csv = f"{outputs_path}/_index.csv"
 
     dpi_original = 300
     dpi_compressed = OUT_DEFAULT_DPI  # TODO: variable output DPI
@@ -265,53 +338,58 @@ def export_pdf(
         data = get_data(data_file)
         original_extension = data["extension"].lower()
 
-        # TODO: try to improve compression when creating PDF; reportlab already compresses images on creation
+        # Get the basename from files_path (document folder name)
+        doc_basename = get_file_basename(files_path)
+
+        # Determine where to find original file and where to put temp files
+        # Original file is in _inputs, temp files go in _files for processing
         if original_extension == "pdf":
             page_extension = "png"
             # Generate temporary images if not already done
             if not already_temp:
-                pdf_basename = get_file_basename(path)
+                # Original PDF is in _inputs
+                if inputs_path and os.path.isfile(inputs_path):
+                    original_pdf_path = inputs_path
+                else:
+                    # Fallback: try to find in _files (for API files or legacy)
+                    original_pdf_path = f"{files_path}/{doc_basename}.pdf"
 
-                pdf = pdfium.PdfDocument(f"{path}/{pdf_basename}.pdf")
+                pdf = pdfium.PdfDocument(original_pdf_path)
                 for i in range(len(pdf)):
                     page = pdf[i]
                     bitmap = page.render(dpi_compressed / 72)
                     pil_image = bitmap.to_pil()
-                    pil_image.save(f"{path}/{pdf_basename}_{i}$.{page_extension}")
+                    pil_image.save(f"{files_path}/{doc_basename}_{i}$.{page_extension}")
 
                 pdf.close()
 
-        # TODO: try to improve compression when creating PDF; reportlab already compresses images on creation
         elif original_extension == "zip":
             page_extension = "png"
             # Generate temporary images if not already done
             if not already_temp:
-                img_basename = get_file_basename(path)
                 pages_list = [
                     p
-                    for p in os.listdir(f"{path}/_pages")
-                    if os.path.isfile(os.path.join(f"{path}/_pages", p))
+                    for p in os.listdir(f"{files_path}/_pages")
+                    if os.path.isfile(os.path.join(f"{files_path}/_pages", p))
                 ]
                 pages_list.sort(key=lambda s: (s.casefold(), s))
                 for i, page in enumerate(pages_list):
                     os.link(
-                        f"{path}/_pages/{page}",
-                        f"{path}/{img_basename}_{i}$.{page_extension}",
+                        f"{files_path}/_pages/{page}",
+                        f"{files_path}/{doc_basename}_{i}$.{page_extension}",
                     )
 
-        # TODO: try to improve compression when creating PDF; reportlab already compresses images on creation
         else:
             page_extension = original_extension
             # Generate temporary images if not already done
             if not already_temp:
-                img_basename = get_file_basename(path)
-                pages_path = f"{path}/_pages"
+                pages_path = f"{files_path}/_pages"
                 pages_list = [p.path for p in os.scandir(pages_path) if p.is_file()]
                 pages_list.sort(key=lambda s: (s.casefold(), s))
                 for i, page in enumerate(pages_list):
                     os.link(
                         page,
-                        f"{path}/{img_basename}_{i}$.{page_extension}",
+                        f"{files_path}/{doc_basename}_{i}$.{page_extension}",
                     )
 
         words = {}
@@ -321,17 +399,17 @@ def export_pdf(
         pdf.setTitle(target)
 
         filenames_asterisk = [
-            x for x in os.listdir(path) if x.endswith(f"$.{page_extension}")
+            x for x in os.listdir(files_path) if x.endswith(f"$.{page_extension}")
         ]
         images = sorted(
             filenames_asterisk, key=lambda x: int(re.search(r"_(\d+)\$", x).group(1))
         )
         for i, image in enumerate(images):
-            image_path = os.path.join(path, image)
+            image_path = os.path.join(files_path, image)
             image_basename = get_file_basename(image)
             image_basename = image_basename[:-1]
 
-            hocr_path = f"{path}/_ocr_results/{image_basename}.json"
+            hocr_path = f"{files_path}/_ocr_results/{image_basename}.json"
 
             im = Image.open(image_path)
             w, h = im.size
@@ -443,8 +521,6 @@ def export_pdf(
                     title.textOut("Índice de palavras")
                     pdf.drawText(title)
 
-                # TODO: ensure full index is written (possibly in multiple pages) if number of words exceeds rows*cols
-
                 # Write index
                 text = pdf.beginText(x, y)
                 for col in range(cols):
@@ -462,12 +538,8 @@ def export_pdf(
 
                         # Write rest of line
                         descript = f': {word[1]["pages"]}'
-                        # not being used: number of word occurrences, word[1]["count"]
                         text.setFont("Helvetica", size)
-                        # offset = w / 2 - margin_x - stringWidth(word[0], "Helvetica-Bold", size) - stringWidth(descript, "Helvetica", size)
-                        # text.moveCursor(offset, 0)
                         text.textLine(descript)
-                        # text.moveCursor(-offset, 0)
 
                     y = h - margin_y
                     x += (w - 2 * margin_x) // cols
@@ -477,15 +549,6 @@ def export_pdf(
                 pdf.showPage()
 
         pdf.save()
-        """
-        # Delete compressed images
-        for compressed_image in os.listdir(path):
-            if compressed_image.endswith(f"$.{page_extension}"):
-                with suppress(
-                    OSError
-                ):  # covers both FileNotFound and the OSError for trying to remove directory
-                    os.remove(os.path.join(path, compressed_image))
-        """
         return target
 
 

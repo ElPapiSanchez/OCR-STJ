@@ -31,6 +31,7 @@ from src.utils.export import load_fonts
 from src.utils.file import ALLOWED_EXTENSIONS
 from src.utils.file import API_TEMP_PATH
 from src.utils.file import dump_json_file
+from src.utils.file import FILES_PATH
 from src.utils.file import generate_random_uuid
 from src.utils.file import get_current_time
 from src.utils.file import get_data
@@ -42,6 +43,8 @@ from src.utils.file import get_ner_file
 from src.utils.file import get_ocr_size
 from src.utils.file import get_page_count
 from src.utils.file import get_word_count
+from src.utils.file import INPUTS_PATH
+from src.utils.file import OUTPUTS_PATH
 from src.utils.file import PRIVATE_PATH
 from src.utils.file import save_file_layouts
 from src.utils.file import size_to_units
@@ -175,13 +178,37 @@ def task_auto_segment(path, use_hdbscan=False):
 
 
 @celery.task(name="export_file", priority=2)
-def task_export(path, filetype, delimiter=False, force_recreate=False, simple=False):
-    return export_file(path, filetype, delimiter, force_recreate, simple)
+def task_export(files_path, filetype, outputs_path=None, inputs_path=None, delimiter=False, force_recreate=False, simple=False):
+    """
+    Export a file to a specific format.
+
+    :param files_path: path to document folder in _files
+    :param filetype: type of file to export
+    :param outputs_path: path to document folder in _outputs
+    :param inputs_path: path to original file in _inputs
+    :param delimiter: for txt, add delimiter between pages
+    :param force_recreate: force recreation of existing files
+    :param simple: for PDF, create simple version without index
+    """
+    # Calculate outputs_path if not provided
+    if outputs_path is None:
+        relative_path = files_path.replace(FILES_PATH, "").strip("/")
+        outputs_path = f"{OUTPUTS_PATH}/{relative_path}"
+
+    return export_file(files_path, filetype, outputs_path=outputs_path, inputs_path=inputs_path,
+                       delimiter=delimiter, force_recreate=force_recreate, simple=simple)
 
 
 @celery.task(name="make_changes", priority=2)
-def task_make_changes(path, data):
-    data_file = path + "/_data.json"
+def task_make_changes(files_path, outputs_path, data):
+    """
+    Regenerate export files after text changes.
+
+    :param files_path: path to document folder in _files
+    :param outputs_path: path to document folder in _outputs
+    :param data: document metadata
+    """
+    data_file = files_path + "/_data.json"
     update_json_file(
         data_file,
         {
@@ -192,6 +219,15 @@ def task_make_changes(path, data):
         },
     )
 
+    # Calculate inputs_path to find original file
+    relative_path = files_path.replace(FILES_PATH, "").strip("/")
+    doc_basename = get_file_basename(files_path)
+    original_extension = data.get("extension", "pdf")
+    if relative_path.count('/') == 0:
+        inputs_path = f"{INPUTS_PATH}/{doc_basename}.{original_extension}"
+    else:
+        inputs_path = f"{INPUTS_PATH}/{relative_path.rsplit('/', 1)[0]}/{doc_basename}.{original_extension}".replace("//", "/")
+
     # Recreate formats already created, as well as any added to the config later
     recreate_types = {
         type_name
@@ -201,7 +237,8 @@ def task_make_changes(path, data):
     if "config" in data and "outputs" in data["config"]:
         recreate_types.update(data["config"]["outputs"])
 
-    export_folder = path + "/_export"
+    # Ensure outputs folder exists
+    os.makedirs(outputs_path, exist_ok=True)
     created_time = get_current_time()
 
     if "txt" in recreate_types:
@@ -214,11 +251,11 @@ def task_make_changes(path, data):
                 }
             },
         )
-        export_file(path, "txt", force_recreate=True)
+        export_file(files_path, "txt", outputs_path=outputs_path, force_recreate=True)
         data["txt"] = {
             "complete": True,
             "size": size_to_units(
-                get_file_size(export_folder + "/_txt.txt", path_complete=True)
+                get_file_size(outputs_path + "/_txt.txt", path_complete=True)
             ),
             "creation": created_time,
         }
@@ -233,11 +270,11 @@ def task_make_changes(path, data):
                 }
             },
         )
-        export_file(path, "txt", delimiter=True, force_recreate=True)
+        export_file(files_path, "txt", outputs_path=outputs_path, delimiter=True, force_recreate=True)
         data["txt_delimited"] = {
             "complete": True,
             "size": size_to_units(
-                get_file_size(export_folder + "/_txt_delimited.txt", path_complete=True)
+                get_file_size(outputs_path + "/_txt_delimited.txt", path_complete=True)
             ),
             "creation": created_time,
         }
@@ -254,22 +291,24 @@ def task_make_changes(path, data):
         )
         recreate_csv = "csv" in recreate_types
         with suppress(FileNotFoundError):
-            os.remove(export_folder + "/_pdf_indexed.pdf")
+            os.remove(outputs_path + "/_pdf_indexed.pdf")
         export_file(
-            path,
+            files_path,
             "pdf",
+            outputs_path=outputs_path,
+            inputs_path=inputs_path,
             force_recreate=True,
             keep_temp=data["pdf"]["complete"],
             get_csv=recreate_csv,
         )
 
         exported_pdf = pdfium.PdfDocument(
-            f"{path}/_export/_pdf_indexed.pdf", autoclose=True
+            f"{outputs_path}/_pdf_indexed.pdf", autoclose=True
         )
         data["pdf_indexed"] = {
             "complete": True,
             "size": size_to_units(
-                get_file_size(export_folder + "/_pdf_indexed.pdf", path_complete=True)
+                get_file_size(outputs_path + "/_pdf_indexed.pdf", path_complete=True)
             ),
             "creation": created_time,
             "pages": len(exported_pdf),
@@ -287,10 +326,12 @@ def task_make_changes(path, data):
         )
         recreate_csv = "csv" in recreate_types and "pdf_indexed" not in recreate_types
         with suppress(FileNotFoundError):
-            os.remove(export_folder + "/_pdf.pdf")
+            os.remove(outputs_path + "/_pdf.pdf")
         export_file(
-            path,
+            files_path,
             "pdf",
+            outputs_path=outputs_path,
+            inputs_path=inputs_path,
             force_recreate=True,
             simple=True,
             already_temp=data["pdf_indexed"]["complete"],
@@ -299,10 +340,10 @@ def task_make_changes(path, data):
         data["pdf"] = {
             "complete": True,
             "size": size_to_units(
-                get_file_size(export_folder + "/_pdf.pdf", path_complete=True)
+                get_file_size(outputs_path + "/_pdf.pdf", path_complete=True)
             ),
             "creation": created_time,
-            "pages": get_page_count(path, "pdf"),
+            "pages": get_page_count(files_path, "pdf"),
         }
 
     if (
@@ -319,13 +360,13 @@ def task_make_changes(path, data):
                 }
             },
         )
-        export_csv(path, force_recreate=True)
+        export_csv(files_path, outputs_path=outputs_path, force_recreate=True)
 
     if "csv" in recreate_types:
         data["csv"] = {
             "complete": True,
             "size": size_to_units(
-                get_file_size(export_folder + "/_index.csv", path_complete=True)
+                get_file_size(outputs_path + "/_index.csv", path_complete=True)
             ),
             "creation": created_time,
         }
@@ -343,11 +384,11 @@ def task_make_changes(path, data):
             )
             # NER is retrieved from .txt results
             if "txt" not in recreate_types:
-                export_file(path, "txt", force_recreate=True)
+                export_file(files_path, "txt", outputs_path=outputs_path, force_recreate=True)
 
-            task_request_ner(path)
+            task_request_ner(files_path, outputs_path)
         except Exception as e:
-            log.error(f"Error fetching NER for {path}: {e}")
+            log.error(f"Error fetching NER for {files_path}: {e}")
             data["ner"] = {"complete": False, "error": True}
 
     data["status"] = {
@@ -361,28 +402,41 @@ def task_make_changes(path, data):
 
 
 @celery.task(name="count_doc_pages", priority=0)
-def task_count_doc_pages(path: str, extension: str):
+def task_count_doc_pages(files_path: str = None, inputs_path: str = None, extension: str = None, path: str = None):
     """
     Updates the metadata of the document at the given path with its page count.
-    :param path: the document's path
+
+    :param files_path: path to document folder in _files
+    :param inputs_path: path to original file in _inputs
     :param extension: the document's original extension
+    :param path: legacy parameter
     """
-    if path.startswith(API_TEMP_PATH):
-        from_api = True
+    # Support legacy usage
+    if files_path is None and path is not None:
+        files_path = path
+        from_api = path.startswith(API_TEMP_PATH)
+        if from_api:
+            inputs_path = f"{path}/{get_file_basename(path)}.{extension}"
+        else:
+            inputs_path = path
     else:
-        from_api = False
-    original_path = (
-        f"{path}/{get_file_basename(path)}.{extension}" if from_api else path
-    )
+        from_api = files_path.startswith(API_TEMP_PATH) if files_path else False
+
+    # Calculate relative path for outputs
+    if not from_api and files_path:
+        relative_path = files_path.replace(FILES_PATH, "").strip("/")
+        outputs_path = f"{OUTPUTS_PATH}/{relative_path}"
+    else:
+        outputs_path = None
 
     update_json_file(
-        f"{path}/_data.json",
+        f"{files_path}/_data.json",
         {
-            "pages": get_page_count(path, extension),
+            "pages": get_page_count(files_path, extension),
             "stored": True,
-            "size": size_to_units(get_file_size(original_path, path_complete=from_api)),
+            "size": size_to_units(get_file_size(inputs_path, path_complete=True) if inputs_path and os.path.isfile(inputs_path) else 0),
             "total_size": size_to_units(
-                get_document_files_size(path, extension=extension, from_api=from_api)
+                get_document_files_size(files_path, inputs_path=inputs_path, outputs_path=outputs_path, extension=extension, from_api=from_api)
             ),
             "status": {
                 "stage": "waiting",
@@ -518,11 +572,28 @@ def prepare_file_from_api(path: str, callback: Signature | None = None):
 
 
 @celery.task(name="prepare_file")
-def task_prepare_file_ocr(path: str, callback: Signature | None = None):
-    data_folder = f"{path}/_data.json"
+def task_prepare_file_ocr(inputs_path: str = None, files_path: str = None, path: str = None, callback: Signature | None = None):
+    """
+    Prepare a file for OCR by extracting pages and generating thumbnails.
+
+    :param inputs_path: path to original file in _inputs
+    :param files_path: path to document folder in _files
+    :param path: legacy parameter, used if inputs_path/files_path not provided
+    :param callback: optional callback to run after preparation
+    """
+    # Support legacy usage where path points to _files location with original inside
+    if inputs_path is None and files_path is None and path is not None:
+        # Legacy mode - original file inside _files folder
+        files_path = path
+        basename = get_file_basename(path)
+        data = get_data(f"{files_path}/_data.json")
+        original_extension = data["extension"]
+        inputs_path = f"{files_path}/{basename}.{original_extension}"
+
+    data_folder = f"{files_path}/_data.json"
     try:
-        if not os.path.exists(f"{path}/_pages"):
-            os.mkdir(f"{path}/_pages")
+        if not os.path.exists(f"{files_path}/_pages"):
+            os.mkdir(f"{files_path}/_pages")
 
         update_json_file(
             data_folder,
@@ -534,29 +605,29 @@ def task_prepare_file_ocr(path: str, callback: Signature | None = None):
             },
         )
 
-        data = get_data(f"{path}/_data.json")
+        data = get_data(f"{files_path}/_data.json")
         original_extension = data["extension"]
         extension = original_extension.lower()
 
-        basename = get_file_basename(path)
+        basename = get_file_basename(files_path)
 
         if extension == "pdf":
-            pdf = pdfium.PdfDocument(f"{path}/{basename}.pdf")
+            pdf = pdfium.PdfDocument(inputs_path)
             num_pages = len(pdf)
             pdf.close()
 
             pdf_prep_callback = task_count_doc_pages.si(
-                path=path, extension=original_extension
+                files_path=files_path, inputs_path=inputs_path, extension=original_extension
             ).set(link=callback, ignore_result=True)
             chord(
-                task_extract_pdf_page.si(path, basename, i) for i in range(num_pages)
+                task_extract_pdf_page.si(files_path, inputs_path, basename, i) for i in range(num_pages)
             )(pdf_prep_callback)
 
         elif extension == "zip":
-            temp_folder_name = f"{path}/{generate_random_uuid()}"
+            temp_folder_name = f"{files_path}/{generate_random_uuid()}"
             os.mkdir(temp_folder_name)
 
-            with zipfile.ZipFile(f"{path}/{basename}.zip", "r") as zip_ref:
+            with zipfile.ZipFile(inputs_path, "r") as zip_ref:
                 zip_ref.extractall(temp_folder_name)
 
             page_paths = [
@@ -566,14 +637,13 @@ def task_prepare_file_ocr(path: str, callback: Signature | None = None):
             ]
 
             # sort pages alphabetically, case-insensitive
-            # casefold for better internationalization, original string appended as fallback
             page_paths.sort(key=lambda s: (s.casefold(), s))
 
             for i, page in enumerate(page_paths):
                 im = Image.open(page)
                 im.save(
-                    f"{path}/_pages/{basename}_{i}.png", format="PNG"
-                )  # using PNG to keep RGBA
+                    f"{files_path}/_pages/{basename}_{i}.png", format="PNG"
+                )
 
                 # Generate document thumbnails with first page
                 if i == 0:
@@ -581,47 +651,44 @@ def task_prepare_file_ocr(path: str, callback: Signature | None = None):
                     thumb_128 = img_rgb.copy()
                     thumb_128.thumbnail((128, 128))
                     thumb_128.save(
-                        f"{path}/_thumbnails/{basename}.zip_128.thumbnail", "JPEG"
+                        f"{files_path}/_thumbnails/{basename}.zip_128.thumbnail", "JPEG"
                     )
                     img_rgb.thumbnail((600, 600))
                     img_rgb.save(
-                        f"{path}/_thumbnails/{basename}.zip_600.thumbnail", "JPEG"
+                        f"{files_path}/_thumbnails/{basename}.zip_600.thumbnail", "JPEG"
                     )
 
             shutil.rmtree(temp_folder_name)
 
-            task_count_doc_pages(path=path, extension=original_extension)
+            task_count_doc_pages(files_path=files_path, inputs_path=inputs_path, extension=original_extension)
             if callback is not None:
                 callback.apply_async(ignore_result=True)
 
         elif extension in ("tif", "tiff"):
-            img = Image.open(
-                f"{path}/{basename}.{original_extension}", formats=["tiff"]
-            )
+            img = Image.open(inputs_path, formats=["tiff"])
             n_frames = img.n_frames
             if n_frames == 1:
-                original_path = f"{path}/{basename}.{original_extension}"
-                link_path = f"{path}/_pages/{basename}_0.{original_extension}"
+                link_path = f"{files_path}/_pages/{basename}_0.{original_extension}"
                 if not os.path.exists(link_path):
-                    os.link(original_path, link_path)
+                    os.link(inputs_path, link_path)
 
                 # Generate document thumbnails
                 img_rgb = img.convert("RGB")
                 thumb_128 = img_rgb.copy()
                 thumb_128.thumbnail((128, 128))
                 thumb_128.save(
-                    f"{path}/_thumbnails/{basename}.{original_extension}_128.thumbnail",
+                    f"{files_path}/_thumbnails/{basename}.{original_extension}_128.thumbnail",
                     "JPEG",
                 )
                 img_rgb.thumbnail((600, 600))
                 img_rgb.save(
-                    f"{path}/_thumbnails/{basename}.{original_extension}_600.thumbnail",
+                    f"{files_path}/_thumbnails/{basename}.{original_extension}_600.thumbnail",
                     "JPEG",
                 )
             else:
                 compression = img._compression
                 img.save(
-                    f"{path}/_pages/{basename}_0.{original_extension}",
+                    f"{files_path}/_pages/{basename}_0.{original_extension}",
                     save_all=False,
                     compression=compression,
                 )
@@ -630,49 +697,49 @@ def task_prepare_file_ocr(path: str, callback: Signature | None = None):
                 thumb_128 = img_rgb.copy()
                 thumb_128.thumbnail((128, 128))
                 thumb_128.save(
-                    f"{path}/_thumbnails/{basename}.{original_extension}_128.thumbnail",
+                    f"{files_path}/_thumbnails/{basename}.{original_extension}_128.thumbnail",
                     "JPEG",
                 )
                 img_rgb.thumbnail((600, 600))
                 img_rgb.save(
-                    f"{path}/_thumbnails/{basename}.{original_extension}_600.thumbnail",
+                    f"{files_path}/_thumbnails/{basename}.{original_extension}_600.thumbnail",
                     "JPEG",
                 )
 
                 for i in range(1, n_frames):
                     img.seek(i)
                     img.save(
-                        f"{path}/_pages/{basename}_{i}.{original_extension}",
+                        f"{files_path}/_pages/{basename}_{i}.{original_extension}",
                         save_all=False,
                         compression=compression,
                     )
 
-            task_count_doc_pages(path=path, extension=original_extension)
+            task_count_doc_pages(files_path=files_path, inputs_path=inputs_path, extension=original_extension)
             if callback is not None:
                 callback.apply_async(ignore_result=True)
 
         elif extension in ALLOWED_EXTENSIONS:  # some other than pdf
-            original_path = f"{path}/{basename}.{original_extension}"
-            link_path = f"{path}/_pages/{basename}_0.{original_extension}"
+            link_path = f"{files_path}/_pages/{basename}_0.{original_extension}"
             if not os.path.exists(link_path):
-                os.link(original_path, link_path)
+                # Use copy instead of hard link since _inputs and _files may be on different volumes
+                shutil.copy2(inputs_path, link_path)
 
             # Generate document thumbnails
-            img = Image.open(original_path)
+            img = Image.open(inputs_path)
             img_rgb = img.convert("RGB")
             thumb_128 = img_rgb.copy()
             thumb_128.thumbnail((128, 128))
             thumb_128.save(
-                f"{path}/_thumbnails/{basename}.{original_extension}_128.thumbnail",
+                f"{files_path}/_thumbnails/{basename}.{original_extension}_128.thumbnail",
                 "JPEG",
             )
             img_rgb.thumbnail((600, 600))
             img_rgb.save(
-                f"{path}/_thumbnails/{basename}.{original_extension}_600.thumbnail",
+                f"{files_path}/_thumbnails/{basename}.{original_extension}_600.thumbnail",
                 "JPEG",
             )
 
-            task_count_doc_pages(path=path, extension=original_extension)
+            task_count_doc_pages(files_path=files_path, inputs_path=inputs_path, extension=original_extension)
             if callback is not None:
                 callback.apply_async(ignore_result=True)
 
@@ -688,41 +755,67 @@ def task_prepare_file_ocr(path: str, callback: Signature | None = None):
             "message": "Erro a preparar documento",
         }
         update_json_file(data_folder, data)
-        log.error(f"Error in preparing OCR for file at {path}: {e}")
+        log.error(f"Error in preparing OCR for file at {files_path}: {e}")
         raise e
 
 
 @celery.task(name="request_ner")
-def task_request_ner(path):
-    data = get_data(path + "/_data.json")
+def task_request_ner(files_path, outputs_path=None):
+    """
+    Request NER (Named Entity Recognition) from the text output.
 
-    success = get_ner_file(path)
+    :param files_path: path to document folder in _files
+    :param outputs_path: path to document folder in _outputs
+    """
+    if outputs_path is None:
+        relative_path = files_path.replace(FILES_PATH, "").strip("/")
+        outputs_path = f"{OUTPUTS_PATH}/{relative_path}"
+
+    data = get_data(files_path + "/_data.json")
+
+    success = get_ner_file(files_path, outputs_path)
     creation_date = get_current_time()
     if success:
         data["ner"] = {
             "complete": True,
             "size": size_to_units(
-                get_file_size(f"{path}/_export/_entities.json", path_complete=True)
+                get_file_size(f"{outputs_path}/_entities.json", path_complete=True)
             ),
             "creation": creation_date,
         }
     else:
         data["ner"] = {"complete": False, "error": True}
 
-    update_json_file(path + "/_data.json", data)
+    update_json_file(files_path + "/_data.json", data)
 
 
 @celery.task(name="file_ocr")
 def task_file_ocr(
-    path: str, config: dict | str | None = None, delete_on_finish: bool = False
+    files_path: str = None,
+    outputs_path: str = None,
+    config: dict | str | None = None,
+    delete_on_finish: bool = False,
+    path: str = None,  # Legacy parameter
 ):
     """
-    Prepare the OCR of a file
-    :param path: path to the file
+    Prepare the OCR of a file.
+
+    :param files_path: path to document folder in _files
+    :param outputs_path: path to document folder in _outputs
     :param config: config to use
-    :param delete_on_finish: whether the original file and pages should be deleted after processing, keeping only the results
+    :param delete_on_finish: whether the original file and pages should be deleted after processing
+    :param path: legacy parameter, used if files_path/outputs_path not provided
     """
-    data_file = f"{path}/_data.json"
+    # Support legacy usage
+    if files_path is None and path is not None:
+        files_path = path
+        relative_path = files_path.replace(FILES_PATH, "").strip("/")
+        outputs_path = f"{OUTPUTS_PATH}/{relative_path}"
+    elif outputs_path is None and files_path is not None:
+        relative_path = files_path.replace(FILES_PATH, "").strip("/")
+        outputs_path = f"{OUTPUTS_PATH}/{relative_path}"
+
+    data_file = f"{files_path}/_data.json"
     try:
         with open(DEFAULT_CONFIG_FILE) as f:
             default_config = json.load(f)
@@ -836,28 +929,27 @@ def task_file_ocr(
         metrics['task_queue_time'] = queue_time
         log.info(f"Task queue creation completed in {queue_time:.2f}s")
 
-        chord(tasks)(task_ocr_complete.s(path, start_total, metrics))
+        chord(tasks)(task_ocr_complete.s(files_path, start_total, metrics))
         """
 
-        if not os.path.exists(f"{path}/_ocr_results"):
-            os.mkdir(f"{path}/_ocr_results")
-        if not os.path.exists(f"{path}/_export"):
-            os.mkdir(f"{path}/_export")
+        if not os.path.exists(f"{files_path}/_ocr_results"):
+            os.mkdir(f"{files_path}/_ocr_results")
 
-        # This should not be necessary as images for OCR are extracted on document upload
-        # task_prepare_file_ocr(path)
+        # Ensure outputs folder exists
+        os.makedirs(outputs_path, exist_ok=True)
 
-        pages_path = f"{path}/_pages"
+        pages_path = f"{files_path}/_pages"
         images = sorted([x for x in os.listdir(pages_path)])
 
         if not images:
             raise FileNotFoundError("Page folder is empty")
 
-        log.debug(f"{path}: A começar OCR")
+        log.debug(f"{files_path}: A começar OCR")
 
         tasks = group(
             task_page_ocr.s(
-                path=path,
+                files_path=files_path,
+                outputs_path=outputs_path,
                 filename=image,
                 ocr_engine_name=f'ocr_{config["engine"]}',
                 lang=lang,
@@ -879,26 +971,31 @@ def task_file_ocr(
             "message": "Erro durante OCR",
         }
         update_json_file(data_file, data)
-        log.error(f"Error in performing OCR for file at {path}: {e}")
+        log.error(f"Error in performing OCR for file at {files_path}: {e}")
 
         return {"status": "error"}
 
 
 @celery.task(name="extract_pdf_page")
-def task_extract_pdf_page(path, basename, i):
-    #
-    # Extracts a single PDF page and saves it as a PNG file.
-    # This runs on separate Celery workers for parallelization.
-    #
+def task_extract_pdf_page(files_path, inputs_path, basename, i):
+    """
+    Extracts a single PDF page and saves it as a PNG file.
+    This runs on separate Celery workers for parallelization.
+
+    :param files_path: path to document folder in _files (for pages and thumbnails)
+    :param inputs_path: path to original PDF file in _inputs
+    :param basename: basename of the document
+    :param i: page index
+    """
     try:
-        pdf = pdfium.PdfDocument(f"{path}/{basename}.pdf")
+        pdf = pdfium.PdfDocument(inputs_path)
         page = pdf[i]
         bitmap = page.render(
             300 / 72
         )  # You can adjust DPI here (e.g., 150 / 72 for smaller files)
         pdf.close()
         pil_image = bitmap.to_pil()
-        output_path = f"{path}/_pages/{basename}_{i}.png"
+        output_path = f"{files_path}/_pages/{basename}_{i}.png"
 
         # Use BytesIO for buffered I/O
         buffer = BytesIO()
@@ -906,7 +1003,7 @@ def task_extract_pdf_page(path, basename, i):
         buffer.seek(0)
 
         # Use temporary file for atomic write
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".png", dir=path) as temp:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png", dir=files_path) as temp:
             temp.write(buffer.getvalue())
 
         # Atomically move the temporary file to the final location
@@ -932,9 +1029,9 @@ def task_extract_pdf_page(path, basename, i):
         if i == 0:
             thumb_128 = pil_image.copy()
             thumb_128.thumbnail((128, 128))
-            thumb_128.save(f"{path}/_thumbnails/{basename}.pdf_128.thumbnail", "JPEG")
+            thumb_128.save(f"{files_path}/_thumbnails/{basename}.pdf_128.thumbnail", "JPEG")
             pil_image.thumbnail((600, 600))
-            pil_image.save(f"{path}/_thumbnails/{basename}.pdf_600.thumbnail", "JPEG")
+            pil_image.save(f"{files_path}/_thumbnails/{basename}.pdf_600.thumbnail", "JPEG")
 
         log.debug(f"Extracted page {i} from {basename}.pdf")
 
@@ -997,26 +1094,39 @@ def task_ocr_complete(results, path, start_time, initial_metrics):
 
 @celery.task(name="page_ocr")
 def task_page_ocr(
-    path: str,
-    filename: str,
-    ocr_engine_name: str,
-    lang: str,
-    output_types: list[str],
+    files_path: str = None,
+    outputs_path: str = None,
+    filename: str = None,
+    ocr_engine_name: str = None,
+    lang: str = None,
+    output_types: list[str] = None,
     config: str | dict | None = None,
     delete_on_finish: bool = False,
+    path: str = None,  # Legacy parameter
 ):
     """
-    Perform the page OCR
+    Perform the page OCR.
 
-    :param path: path to the file
+    :param files_path: path to document folder in _files
+    :param outputs_path: path to document folder in _outputs
     :param filename: filename of the page
     :param ocr_engine_name: name of the OCR module to use
     :param lang: string of languages to use
     :param config: config to use
     :param output_types: output types to generate directly, if the file is a single page without user-defined text boxes
     :param delete_on_finish: whether the original file and pages should be deleted on finish, keeping only the results
+    :param path: legacy parameter
     """
-    data_file = f"{path}/_data.json"
+    # Support legacy usage
+    if files_path is None and path is not None:
+        files_path = path
+        relative_path = files_path.replace(FILES_PATH, "").strip("/")
+        outputs_path = f"{OUTPUTS_PATH}/{relative_path}"
+    elif outputs_path is None and files_path is not None:
+        relative_path = files_path.replace(FILES_PATH, "").strip("/")
+        outputs_path = f"{OUTPUTS_PATH}/{relative_path}"
+
+    data_file = f"{files_path}/_data.json"
     try:
         if filename.split(".")[0][-1] == "$":
             return None
@@ -1035,7 +1145,7 @@ def task_page_ocr(
         # Convert the ocr_algorithm to the correct class
         ocr_engine = globals()[ocr_engine_name.lower()]
 
-        layout_path = f"{path}/_layouts/{get_file_basename(filename)}.json"
+        layout_path = f"{files_path}/_layouts/{get_file_basename(filename)}.json"
 
         parsed_json = []
         text_groups = []
@@ -1054,15 +1164,15 @@ def task_page_ocr(
             elif area_type == "remove":
                 ignore_groups.append(item)
 
-        image_filename = f"{path}/_pages/{filename}"
+        image_filename = f"{files_path}/_pages/{filename}"
         image = None
 
         # extract images, if any selected
         if image_groups:
             image = Image.open(image_filename)
 
-            if not os.path.exists(f"{path}/_images"):
-                os.mkdir(f"{path}/_images")
+            if not os.path.exists(f"{files_path}/_images"):
+                os.mkdir(f"{files_path}/_images")
 
             basename = get_file_basename(filename)
             page_number = int(basename.split("_")[-1]) + 1
@@ -1077,7 +1187,7 @@ def task_page_ocr(
                     box_coords = (left, top, right, bottom)
                     cropped_image = image.crop(box_coords)
                     cropped_image.save(
-                        f"{path}/_images/page{page_number}_{item_id + 1}.{filename.split('.')[-1].lower()}"
+                        f"{files_path}/_images/page{page_number}_{item_id + 1}.{filename.split('.')[-1].lower()}"
                     )
 
         # cover ignored segments, if any selected
@@ -1114,7 +1224,8 @@ def task_page_ocr(
                     page=image,
                     lang=lang,
                     config=config,
-                    doc_path=path,
+                    doc_path=files_path,
+                    outputs_path=outputs_path,
                     segment_box=box_coordinates_list,
                 )
             else:
@@ -1125,7 +1236,8 @@ def task_page_ocr(
                         page=image,
                         lang=lang,
                         config=config,
-                        doc_path=path,
+                        doc_path=files_path,
+                        outputs_path=outputs_path,
                         segment_box=box,
                     )
                     if box_json:
@@ -1152,7 +1264,8 @@ def task_page_ocr(
                 page=image,
                 lang=lang,
                 config=config,
-                doc_path=path,
+                doc_path=files_path,
+                outputs_path=outputs_path,
                 output_types=output_types,
                 # If single-page document, take advantage of output types to immediately generate results with Tesseract
                 single_page=n_doc_pages == 1,
@@ -1161,14 +1274,14 @@ def task_page_ocr(
 
         # Store formatted OCR output for the page in JSON
         with open(
-            f"{path}/_ocr_results/{get_file_basename(filename)}.json",
+            f"{files_path}/_ocr_results/{get_file_basename(filename)}.json",
             "w",
             encoding="utf-8",
         ) as f:
             json.dump(page_json, f, indent=2, ensure_ascii=False)
 
         # Performed OCR of page, update data
-        files = os.listdir(f"{path}/_ocr_results")
+        files = os.listdir(f"{files_path}/_ocr_results")
 
         data = get_data(data_file)
         data["ocr"]["progress"] = len(files)
@@ -1183,13 +1296,13 @@ def task_page_ocr(
         if len(files) == n_doc_pages:
             # If single-page document, directly store results generated by Tesseract
             if n_doc_pages == 1 and raw_results:
-                export_from_existing(path, raw_results, output_types)
+                export_from_existing(files_path, outputs_path, raw_results, output_types)
 
             finish_ocr_data = get_data(data_file)
             finish_ocr_data["ocr"].update(
                 {
                     "progress": len(files),
-                    "size": get_ocr_size(f"{path}/_ocr_results"),
+                    "size": get_ocr_size(f"{files_path}/_ocr_results"),
                     "creation": get_current_time(),
                 }
             )
@@ -1198,14 +1311,16 @@ def task_page_ocr(
 
             if delete_on_finish:
                 callback = task_delete_file.si(
-                    path=f"{path}/{get_file_basename(path)}.{data['extension']}"
+                    path=f"{files_path}/{get_file_basename(files_path)}.{data['extension']}"
                 )
                 task_export_results.apply_async(
-                    (path, output_types), link=callback, ignore_result=True
+                    kwargs={"files_path": files_path, "outputs_path": outputs_path, "output_types": output_types},
+                    link=callback, ignore_result=True
                 )
             else:
                 task_export_results.apply_async(
-                    (path, output_types), ignore_result=True
+                    kwargs={"files_path": files_path, "outputs_path": outputs_path, "output_types": output_types},
+                    ignore_result=True
                 )
 
         return {"status": "success"}
@@ -1225,9 +1340,37 @@ def task_page_ocr(
 
 
 @celery.task(name="export_results", priority=2)
-def task_export_results(path: str, output_types: list[str]):
-    data_file = f"{path}/_data.json"
+def task_export_results(files_path: str = None, outputs_path: str = None, output_types: list[str] = None, path: str = None):
+    """
+    Export OCR results to various formats.
+
+    :param files_path: path to document folder in _files
+    :param outputs_path: path to document folder in _outputs
+    :param output_types: list of output types to generate
+    :param path: legacy parameter
+    """
+    # Support legacy usage
+    if files_path is None and path is not None:
+        files_path = path
+        relative_path = files_path.replace(FILES_PATH, "").strip("/")
+        outputs_path = f"{OUTPUTS_PATH}/{relative_path}"
+    elif outputs_path is None and files_path is not None:
+        relative_path = files_path.replace(FILES_PATH, "").strip("/")
+        outputs_path = f"{OUTPUTS_PATH}/{relative_path}"
+    else:
+        relative_path = files_path.replace(FILES_PATH, "").strip("/")
+
+    data_file = f"{files_path}/_data.json"
     data = get_data(data_file)
+
+    # Calculate inputs_path to find original file
+    doc_basename = get_file_basename(files_path)
+    original_extension = data.get("extension", "pdf")
+    inputs_path = f"{INPUTS_PATH}/{relative_path.rsplit('/', 1)[0]}/{doc_basename}.{original_extension}".replace("//", "/")
+    # Handle root level files
+    if relative_path.count('/') == 0:
+        inputs_path = f"{INPUTS_PATH}/{doc_basename}.{original_extension}"
+
     update_json_file(
         data_file,
         {
@@ -1237,6 +1380,9 @@ def task_export_results(path: str, output_types: list[str]):
             }
         },
     )
+
+    # Ensure outputs directory exists
+    os.makedirs(outputs_path, exist_ok=True)
 
     try:
         if ("ner" in output_types or "txt" in output_types) and not data["txt"][
@@ -1251,11 +1397,11 @@ def task_export_results(path: str, output_types: list[str]):
                     }
                 },
             )
-            export_file(path, "txt")
+            export_file(files_path, "txt", outputs_path=outputs_path)
             data["txt"] = {
                 "complete": True,
                 "size": size_to_units(
-                    get_file_size(f"{path}/_export/_txt.txt", path_complete=True)
+                    get_file_size(f"{outputs_path}/_txt.txt", path_complete=True)
                 ),
                 "creation": get_current_time(),
             }
@@ -1270,18 +1416,18 @@ def task_export_results(path: str, output_types: list[str]):
                     }
                 },
             )
-            export_file(path, "txt", delimiter=True)
+            export_file(files_path, "txt", outputs_path=outputs_path, delimiter=True)
             data["txt_delimited"] = {
                 "complete": True,
                 "size": size_to_units(
                     get_file_size(
-                        f"{path}/_export/_txt_delimited.txt", path_complete=True
+                        f"{outputs_path}/_txt_delimited.txt", path_complete=True
                     )
                 ),
                 "creation": get_current_time(),
             }
 
-        if os.path.exists(f"{path}/_images") and os.listdir(f"{path}/_images"):
+        if os.path.exists(f"{files_path}/_images") and os.listdir(f"{files_path}/_images"):
             update_json_file(
                 data_file,
                 {
@@ -1291,11 +1437,11 @@ def task_export_results(path: str, output_types: list[str]):
                     }
                 },
             )
-            export_file(path, "imgs")
+            export_file(files_path, "imgs", outputs_path=outputs_path)
             data["zip"] = {
                 "complete": True,
                 "size": size_to_units(
-                    get_file_size(f"{path}/_export/_images.zip", path_complete=True)
+                    get_file_size(f"{outputs_path}/_images.zip", path_complete=True)
                 ),
                 "creation": get_current_time(),
             }
@@ -1312,21 +1458,23 @@ def task_export_results(path: str, output_types: list[str]):
             )
             keep_temp_images = "pdf" in output_types and not data["pdf"]["complete"]
             export_file(
-                path,
+                files_path,
                 "pdf",
+                outputs_path=outputs_path,
+                inputs_path=inputs_path,
                 keep_temp=keep_temp_images,
                 get_csv=("csv" in output_types),
             )
             creation_time = get_current_time()
             exported_pdf = pdfium.PdfDocument(
-                f"{path}/_export/_pdf_indexed.pdf", autoclose=True
+                f"{outputs_path}/_pdf_indexed.pdf", autoclose=True
             )
 
             data["pdf_indexed"] = {
                 "complete": True,
                 "size": size_to_units(
                     get_file_size(
-                        f"{path}/_export/_pdf_indexed.pdf", path_complete=True
+                        f"{outputs_path}/_pdf_indexed.pdf", path_complete=True
                     )
                 ),
                 "creation": creation_time,
@@ -1337,7 +1485,7 @@ def task_export_results(path: str, output_types: list[str]):
                 data["csv"] = {
                     "complete": True,
                     "size": size_to_units(
-                        get_file_size(f"{path}/_export/_index.csv", path_complete=True)
+                        get_file_size(f"{outputs_path}/_index.csv", path_complete=True)
                     ),
                     "creation": creation_time,
                 }
@@ -1353,8 +1501,10 @@ def task_export_results(path: str, output_types: list[str]):
                 },
             )
             export_file(
-                path,
+                files_path,
                 "pdf",
+                outputs_path=outputs_path,
+                inputs_path=inputs_path,
                 simple=True,
                 already_temp=("pdf_indexed" in output_types),
                 get_csv=("csv" in output_types),
@@ -1363,17 +1513,17 @@ def task_export_results(path: str, output_types: list[str]):
             data["pdf"] = {
                 "complete": True,
                 "size": size_to_units(
-                    get_file_size(f"{path}/_export/_pdf.pdf", path_complete=True)
+                    get_file_size(f"{outputs_path}/_pdf.pdf", path_complete=True)
                 ),
                 "creation": creation_time,
-                "pages": get_page_count(path, "pdf"),
+                "pages": get_page_count(files_path, "pdf"),
             }
             if "csv" in output_types:
                 # CSV exported as part of PDF export
                 data["csv"] = {
                     "complete": True,
                     "size": size_to_units(
-                        get_file_size(f"{path}/_export/_index.csv", path_complete=True)
+                        get_file_size(f"{outputs_path}/_index.csv", path_complete=True)
                     ),
                     "creation": creation_time,
                 }
@@ -1388,11 +1538,11 @@ def task_export_results(path: str, output_types: list[str]):
                     }
                 },
             )
-            export_csv(path)
+            export_csv(files_path, outputs_path=outputs_path)
             data["csv"] = {
                 "complete": True,
                 "size": size_to_units(
-                    get_file_size(f"{path}/_export/_index.csv", path_complete=True)
+                    get_file_size(f"{outputs_path}/_index.csv", path_complete=True)
                 ),
                 "creation": get_current_time(),
             }
@@ -1407,13 +1557,13 @@ def task_export_results(path: str, output_types: list[str]):
                     }
                 },
             )
-            success = get_ner_file(path)
+            success = get_ner_file(files_path, outputs_path)
             if success:
                 data["ner"] = {
                     "complete": True,
                     "size": size_to_units(
                         get_file_size(
-                            f"{path}/_export/_entities.json", path_complete=True
+                            f"{outputs_path}/_entities.json", path_complete=True
                         )
                     ),
                     "creation": get_current_time(),
@@ -1421,7 +1571,7 @@ def task_export_results(path: str, output_types: list[str]):
             else:
                 data["ner"] = {"complete": False, "error": True}
 
-        if path.startswith(API_TEMP_PATH):
+        if files_path.startswith(API_TEMP_PATH):
             original_extension = data["extension"]
             from_api = True
         else:
@@ -1434,10 +1584,10 @@ def task_export_results(path: str, output_types: list[str]):
         }
         data["total_size"] = size_to_units(
             get_document_files_size(
-                path, extension=original_extension, from_api=from_api
+                files_path, outputs_path=outputs_path, extension=original_extension, from_api=from_api
             )
         )
-        data["words"] = get_word_count(path)
+        data["words"] = get_word_count(files_path)
 
         update_json_file(data_file, data)
         return {"status": "success"}
@@ -1451,7 +1601,7 @@ def task_export_results(path: str, output_types: list[str]):
             "message": "Erro a gerar resultados",
         }
         update_json_file(data_file, data)
-        log.error(f"Error in exporting results for file at {path}: {e}")
+        log.error(f"Error in exporting results for file at {files_path}: {e}")
 
         # return {"status": "error", "metricas": page_metrics}
         return {"status": "error"}

@@ -932,7 +932,7 @@ class LayoutMenu extends React.Component {
                             startIcon={<CheckRoundedIcon />}
 							onClick={() => this.saveLayout(true)}
 						>
-							Terminar
+							{this.props.t("finish")}
 						</Button>
                         </span></Tooltip>
 					</Box>

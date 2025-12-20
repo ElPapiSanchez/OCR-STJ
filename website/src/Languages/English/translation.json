@@ -107,5 +107,7 @@
     "additional parameters": "Additional Parameters",
     "choose preset": "Choose preset configuration",
     "lose results": "You will lose your last results and previous changes!",
-    "begin": "Start"
+    "begin": "Start",
+    "clear all": "Clear All",
+    "alter existing config": "Alter Existing Config"
 }

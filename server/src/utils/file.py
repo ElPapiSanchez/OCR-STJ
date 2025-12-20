@@ -14,8 +14,10 @@ from filelock import FileLock
 # from string import punctuation
 
 FILES_PATH = environ.get("FILES_PATH", "_files")
+INPUTS_PATH = environ.get("INPUTS_PATH", "_inputs")
+OUTPUTS_PATH = environ.get("OUTPUTS_PATH", "_outputs")
 TEMP_PATH = environ.get("TEMP_PATH", "_pending-files")
-PRIVATE_PATH = environ.get("PRIVATE_PATH", "_files/_private_spaces")
+PRIVATE_PATH = environ.get("PRIVATE_PATH", "_private_spaces")
 API_TEMP_PATH = environ.get("API_TEMP_PATH", "_files/_tmp")
 
 ALLOWED_EXTENSIONS = (
@@ -43,19 +45,112 @@ TIMEZONE = pytz.timezone("Europe/Lisbon")
 # FILESYSTEM UTILS
 ##################################################
 
-# Current file system structure
-# files
-# - folder1
-#   - filename.(pdf/png/jpg/...)
-#       - filename.(pdf/png/jpg/...)    (the original submitted file)
-#       - filename_extracted.txt        (the text extracted initially)
-#       - filename_changes.txt          (the text changed by the user)
-#       - conf.txt                      (the conf file of the OCR engine used)
-# - folder2
+# File system structure (three separate trees with mirrored structure):
+#
+# _inputs/                          (original files - displayed in UI)
+#   - folder1/
+#     - subfolder/
+#       - filename.pdf              (the original submitted file)
+#
+# _files/                           (metadata and processing data)
+#   - folder1/
+#     - _data.json                  (folder metadata)
+#     - subfolder/
+#       - _data.json                (folder metadata)
+#       - filename.pdf/             (document folder)
+#         - _data.json              (document metadata)
+#         - _ocr_results/           (OCR JSON results per page)
+#         - _pages/                 (extracted pages as images)
+#         - _layouts/               (layout definitions)
+#         - _thumbnails/            (document thumbnails)
+#         - _images/                (extracted images from layouts)
+#
+# _outputs/                         (exported results)
+#   - folder1/
+#     - subfolder/
+#       - filename.pdf/
+#         - _txt.txt
+#         - _pdf.pdf
+#         - _pdf_indexed.pdf
+#         - _index.csv
+#         - _entities.json
+#         - _images.zip
 
 
-def get_ner_file(path):
-    with open(f"{path}/_export/_txt.txt", "rb") as file:
+def get_relative_path(full_path, is_private=False, private_space=None):
+    """
+    Extract the relative path from a full path by removing the base directory prefix.
+
+    :param full_path: the full path (e.g., '_inputs/folder/file.pdf')
+    :param is_private: whether the path is in a private space
+    :param private_space: the private space ID if applicable
+    :return: the relative path (e.g., 'folder/file.pdf')
+    """
+    if is_private and private_space:
+        prefix = f"{PRIVATE_PATH}/{private_space}"
+        if full_path.startswith(prefix):
+            return full_path[len(prefix):].strip("/")
+    for base in [INPUTS_PATH, FILES_PATH, OUTPUTS_PATH]:
+        if full_path.startswith(base):
+            return full_path[len(base):].strip("/")
+    return full_path.strip("/")
+
+
+def get_inputs_path(relative_path, is_private=False, private_space=None):
+    """
+    Get the full path in _inputs for a relative path.
+
+    :param relative_path: the relative path within the file structure
+    :param is_private: whether the path is in a private space
+    :param private_space: the private space ID if applicable
+    :return: full path in the inputs directory
+    """
+    if is_private and private_space:
+        return f"{PRIVATE_PATH}/{private_space}/_inputs/{relative_path}".rstrip("/")
+    return f"{INPUTS_PATH}/{relative_path}".rstrip("/")
+
+
+def get_files_path(relative_path, is_private=False, private_space=None):
+    """
+    Get the full path in _files for a relative path.
+
+    :param relative_path: the relative path within the file structure
+    :param is_private: whether the path is in a private space
+    :param private_space: the private space ID if applicable
+    :return: full path in the files directory
+    """
+    if is_private and private_space:
+        return f"{PRIVATE_PATH}/{private_space}/_files/{relative_path}".rstrip("/")
+    return f"{FILES_PATH}/{relative_path}".rstrip("/")
+
+
+def get_outputs_path(relative_path, is_private=False, private_space=None):
+    """
+    Get the full path in _outputs for a relative path.
+
+    :param relative_path: the relative path within the file structure
+    :param is_private: whether the path is in a private space
+    :param private_space: the private space ID if applicable
+    :return: full path in the outputs directory
+    """
+    if is_private and private_space:
+        return f"{PRIVATE_PATH}/{private_space}/_outputs/{relative_path}".rstrip("/")
+    return f"{OUTPUTS_PATH}/{relative_path}".rstrip("/")
+
+
+def get_ner_file(files_path, outputs_path):
+    """
+    Request NER entities from the text file and save to outputs.
+
+    :param files_path: path to document folder in _files (for reading _data.json if needed)
+    :param outputs_path: path to document folder in _outputs (for reading txt and writing entities)
+    :return: True if successful, False otherwise
+    """
+    txt_file_path = f"{outputs_path}/_txt.txt"
+    if not os.path.exists(txt_file_path):
+        return False
+
+    with open(txt_file_path, "rb") as file:
         r = requests.post(
             "https://iris.sysresearch.org/anonimizador/from-text",
             files={"file": file},
@@ -66,7 +161,7 @@ def get_ner_file(path):
         return False
 
     if r.status_code == 200:
-        with open(f"{path}/_export/_entities.json", "w", encoding="utf-8") as f:
+        with open(f"{outputs_path}/_entities.json", "w", encoding="utf-8") as f:
             json.dump(ner, f, indent=2, ensure_ascii=False)
         return True
     else:
@@ -261,18 +356,27 @@ def delete_structure(client, path):
             delete_structure(client, folder)
 
 
-# TODO
 def get_filesystem(path, private_space: str = None, is_private: bool = False) -> dict:
     """
-    :param path: path to the folder
+    Get the filesystem structure starting from INPUTS_PATH.
+
+    :param path: path to the folder (relative or in _inputs)
     :param private_space: name of the private space, if applicable
     :param is_private: whether the target path is a private space
     """
-    files = get_structure(path, private_space, is_private)
-    info = get_structure_info(path, private_space, is_private)
+    # Determine the inputs path for structure and files path for metadata
+    if is_private and private_space:
+        inputs_base = f"{PRIVATE_PATH}/{private_space}/_inputs"
+        files_base = f"{PRIVATE_PATH}/{private_space}/_files"
+    else:
+        inputs_base = INPUTS_PATH
+        files_base = FILES_PATH
+
+    files = get_structure(inputs_base, files_base, private_space, is_private)
+    info = get_structure_info(inputs_base, files_base, private_space, is_private)
 
     if files is None:
-        if path != FILES_PATH and PRIVATE_PATH not in path:
+        if path != INPUTS_PATH and PRIVATE_PATH not in path:
             files = {path: []}
         else:
             files = {"files": []}
@@ -323,24 +427,45 @@ def get_ocr_size(path):
         return f"{size / 1024 ** 3:.2f} GB"
 
 
-def get_document_files_size(path, extension=None, from_api: bool = False):
+def get_document_files_size(files_path, inputs_path=None, outputs_path=None, extension=None, from_api: bool = False):
     """
-    Get the total size of files related to a document,
-    which are the original copy of the file and result files inside /_export.
-    :param path: path to the document folder
-    :param extension: extension in the original file, used in the case of documents from the API
+    Get the total size of files related to a document across all three folders.
+
+    :param files_path: path to document folder in _files (metadata/processing)
+    :param inputs_path: path to original file in _inputs (optional, calculated if not provided)
+    :param outputs_path: path to document folder in _outputs (optional, calculated if not provided)
+    :param extension: extension of the original file, used for API documents
     :param from_api: whether the method is being called for a file from the API
     :return: total size in bytes
     """
-    original_path = (
-        f"{path}/{get_file_basename(path)}.{extension}" if from_api else path
-    )
-    size = get_file_size(original_path, path_complete=from_api)  # original file's size
-    for dirpath, folders, filenames in os.walk(f"{path}/_export"):
-        for f in filenames:
-            subpath = os.path.join(dirpath, f)
-            if not os.path.islink(subpath):
-                size += os.path.getsize(subpath)
+    size = 0
+
+    # Size of original file in _inputs
+    if inputs_path and os.path.exists(inputs_path):
+        if os.path.isfile(inputs_path):
+            size += os.path.getsize(inputs_path)
+    elif from_api:
+        # API files have the original inside the _files path
+        original_path = f"{files_path}/{get_file_basename(files_path)}.{extension}"
+        if os.path.exists(original_path):
+            size += os.path.getsize(original_path)
+
+    # Size of metadata/processing files in _files
+    if os.path.exists(files_path):
+        for dirpath, folders, filenames in os.walk(files_path):
+            for f in filenames:
+                subpath = os.path.join(dirpath, f)
+                if not os.path.islink(subpath):
+                    size += os.path.getsize(subpath)
+
+    # Size of output files in _outputs
+    if outputs_path and os.path.exists(outputs_path):
+        for dirpath, folders, filenames in os.walk(outputs_path):
+            for f in filenames:
+                subpath = os.path.join(dirpath, f)
+                if not os.path.islink(subpath):
+                    size += os.path.getsize(subpath)
+
     return size
 
 
@@ -359,28 +484,35 @@ def get_folder_size(path):
     return size
 
 
-def get_file_size(path, path_complete=False):
+def get_file_size(path, path_complete=True):
     """
     Returns the file's size.
+
     :param path: path to the file
-    :param path_complete: whether the path is complete;
-    if not, seeks the file contained within the target folder which shares its name
+    :param path_complete: whether the path points directly to a file;
+        if False, assumes path is a folder and looks for a file with the folder's name inside it
     :return: file size in bytes
     """
     if not path_complete:
         name = path.split("/")[-1]
         path = f"{path}/{name}"
+    if not os.path.exists(path):
+        return 0
     return os.path.getsize(path)
 
 
-def get_folder_info(path, private_space=None):
+def get_folder_info(inputs_path, files_path, private_space=None, is_private=False):
     """
-    Get the info of the folder
-    :param path: path to the folder
+    Get the info of the folder.
+
+    :param inputs_path: path to the folder in _inputs (for listing contents)
+    :param files_path: path to the folder in _files (for metadata)
+    :param private_space: name of the private space if applicable
+    :param is_private: whether this is a private space
     """
     info = {}
     try:
-        data = get_data(f"{path}/_data.json")
+        data = get_data(f"{files_path}/_data.json")
     except (FileNotFoundError, JSONDecodeError):
         return {}
 
@@ -390,51 +522,68 @@ def get_folder_info(path, private_space=None):
     if data["type"] == "folder":
         n_subfolders = 0
         n_docs = 0
-        for content in os.scandir(path):
-            if content.is_dir() and not content.name.startswith("_"):
-                content_data = get_data(f"{path}/{content.name}/_data.json")
-                if "type" in content_data:
-                    if content_data["type"] == "folder":
-                        n_subfolders += 1
-                    elif content_data["type"] == "file":
-                        n_docs += 1
+        # Scan contents from _inputs path
+        if os.path.exists(inputs_path):
+            for content in os.scandir(inputs_path):
+                if content.is_dir() and not content.name.startswith("_"):
+                    # Check metadata in _files path
+                    content_files_path = f"{files_path}/{content.name}"
+                    try:
+                        content_data = get_data(f"{content_files_path}/_data.json")
+                        if "type" in content_data:
+                            if content_data["type"] == "folder":
+                                n_subfolders += 1
+                            elif content_data["type"] == "file":
+                                n_docs += 1
+                    except (FileNotFoundError, JSONDecodeError):
+                        # Check if it's a file (file in inputs, folder in files)
+                        if content.is_file():
+                            n_docs += 1
+                        else:
+                            n_subfolders += 1
+                elif content.is_file() and not content.name.startswith("_"):
+                    # This is a document (file in _inputs)
+                    n_docs += 1
         data["contents"] = {"documents": n_docs, "subfolders": n_subfolders}
 
+        # Calculate folder size from _files path (metadata/processing data)
         folder_size = 0
-        dirs_dict = {}
-        # traverse bottom-up adding subdirectory sizes
-        for root, dirs, files in os.walk(path, topdown=False):
-            # sum directory file sizes
-            size = sum(os.path.getsize(os.path.join(root, name)) for name in files)
-            # sum subdirectory sizes
-            subdir_size = sum(dirs_dict[os.path.join(root, d)] for d in dirs)
-            # store size of current directory and update total size
-            folder_size = dirs_dict[root] = size + subdir_size
+        if os.path.exists(files_path):
+            dirs_dict = {}
+            for root, dirs, files in os.walk(files_path, topdown=False):
+                size = sum(os.path.getsize(os.path.join(root, name)) for name in files)
+                subdir_size = sum(dirs_dict.get(os.path.join(root, d), 0) for d in dirs)
+                folder_size = dirs_dict[root] = size + subdir_size
         data["size"] = size_to_units(folder_size)
 
-    # sanitize important paths from the info key
-    path = (
-        path.replace(f"{PRIVATE_PATH}/{private_space}", "")
-        .replace(PRIVATE_PATH, "")
-        .replace(FILES_PATH, "")
-        .strip("/")
-    )
-    info[path] = data
+    # Sanitize important paths from the info key to get relative path
+    if is_private and private_space:
+        relative_path = files_path.replace(f"{PRIVATE_PATH}/{private_space}/_files", "").strip("/")
+    else:
+        relative_path = files_path.replace(FILES_PATH, "").strip("/")
+
+    info[relative_path] = data
     return info
 
 
-def get_structure_info(path, private_space=None, is_private=False):
+def get_structure_info(inputs_base, files_base, private_space=None, is_private=False):
     """
-    Get the info of each file/folder
+    Get the info of each file/folder by walking _inputs and reading metadata from _files.
+
+    :param inputs_base: base path in _inputs to walk
+    :param files_base: base path in _files for metadata
+    :param private_space: name of private space if applicable
+    :param is_private: whether this is a private space
     """
-    if not is_private and PRIVATE_PATH in path:
+    if not is_private and PRIVATE_PATH in inputs_base:
         raise FileNotFoundError
-    if API_TEMP_PATH in path:
+    if API_TEMP_PATH in inputs_base:
         raise FileNotFoundError
 
     info = {}
 
-    for root, folders, _ in os.walk(path, topdown=True):
+    # Walk the _inputs tree
+    for root, folders, files in os.walk(inputs_base, topdown=True):
         root = root.replace("\\", "/")
         # ignore reserved folders by pruning them from search tree
         folders[:] = [f for f in folders if not f.startswith("_")]
@@ -447,15 +596,32 @@ def get_structure_info(path, private_space=None, is_private=False):
         if is_private and f"{PRIVATE_PATH}/{private_space}" not in root:
             continue
 
-        folder_path = root.replace("\\", "/")
-        folder_info = get_folder_info(folder_path, private_space)
+        # Calculate the relative path from inputs_base
+        relative_path = root.replace(inputs_base, "").strip("/")
+        files_path = f"{files_base}/{relative_path}".rstrip("/")
+
+        # Get folder info using both inputs and files paths
+        folder_info = get_folder_info(root, files_path, private_space, is_private)
         info = {**info, **folder_info}
+
+        # Also get info for files (documents) in this folder
+        for filename in files:
+            if filename.startswith("_"):
+                continue
+            # For documents, the file is in _inputs, metadata folder is in _files
+            doc_inputs_path = f"{root}/{filename}"
+            doc_files_path = f"{files_path}/{filename}"
+            doc_info = get_folder_info(doc_inputs_path, doc_files_path, private_space, is_private)
+            info = {**info, **doc_info}
+
     return info
 
 
-def get_structure(path, private_space=None, is_private=False):
+def get_structure(inputs_path, files_path, private_space=None, is_private=False):
     """
-    Put the file system structure in a dict
+    Build the file system structure from _inputs tree with metadata from _files.
+
+    Returns a dict like:
     {
         'files': [
             {
@@ -467,51 +633,75 @@ def get_structure(path, private_space=None, is_private=False):
         ]
     }
 
-    :param path: the path to the files
+    :param inputs_path: path in _inputs to read structure from
+    :param files_path: corresponding path in _files for metadata
+    :param private_space: name of private space if applicable
+    :param is_private: whether this is a private space
     """
-    if not is_private and PRIVATE_PATH in path:
+    if not is_private and PRIVATE_PATH in inputs_path:
         raise FileNotFoundError
-    if API_TEMP_PATH in path:
+    if API_TEMP_PATH in inputs_path:
         raise FileNotFoundError
 
     filesystem = {}
-    if path == FILES_PATH or path == f"{PRIVATE_PATH}/{private_space}":
+
+    # Determine if this is a root folder
+    if is_private and private_space:
+        is_root = inputs_path == f"{PRIVATE_PATH}/{private_space}/_inputs"
+    else:
+        is_root = inputs_path == INPUTS_PATH
+
+    if is_root:
         name = "files"
     else:
-        name = path.split("/")[-1]
+        name = inputs_path.split("/")[-1]
 
-        try:
-            data = get_data(f"{path}/_data.json")
-        except (FileNotFoundError, JSONDecodeError):
-            return None
-
-        if "type" not in data:
-            return None
-        if data["type"] == "file":
+        # Check if this is a document (file in _inputs, folder in _files)
+        if os.path.isfile(inputs_path):
+            # This is a document file
             return name
 
+        # Check metadata in _files for folders
+        try:
+            data = get_data(f"{files_path}/_data.json")
+            if "type" not in data:
+                return None
+            if data["type"] == "file":
+                return name
+        except (FileNotFoundError, JSONDecodeError):
+            # No metadata yet, treat as regular folder
+            pass
+
+    if not os.path.exists(inputs_path):
+        return None
+
     contents = []
-    # ignore reserved folders that start with '_'
-    folders = sorted(
-        [
-            f
-            for f in os.listdir(path)
-            if os.path.isdir(f"{path}/{f}") and not f.startswith("_")
-        ]
-    )
-    for folder in folders:
+
+    # List all items in inputs_path (both files and folders)
+    items = sorted([
+        f for f in os.listdir(inputs_path)
+        if not f.startswith("_")
+    ])
+
+    for item in items:
+        item_inputs_path = f"{inputs_path}/{item}"
+        item_files_path = f"{files_path}/{item}"
+
         # ignore possible private path folders
-        if not is_private and folder in PRIVATE_PATH.split("/"):
+        if not is_private and item in PRIVATE_PATH.split("/"):
             continue
-        # if in a private space, ignore folders not from this private space
-        if is_private and f"{PRIVATE_PATH}/{private_space}" not in f"{path}/{folder}":
+        # if in a private space, ignore items not from this private space
+        if is_private and f"{PRIVATE_PATH}/{private_space}" not in item_inputs_path:
             continue
 
-        folder = f"{path}/{folder}"
-        file = get_structure(folder, private_space, is_private)
-
-        if file is not None:
-            contents.append(file)
+        if os.path.isfile(item_inputs_path):
+            # This is a document file - just add the filename
+            contents.append(item)
+        elif os.path.isdir(item_inputs_path):
+            # This is a folder - recurse
+            result = get_structure(item_inputs_path, item_files_path, private_space, is_private)
+            if result is not None:
+                contents.append(result)
 
     filesystem[name] = contents
     return filesystem

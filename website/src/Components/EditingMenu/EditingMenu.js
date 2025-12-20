@@ -975,7 +975,7 @@ class EditingMenu extends React.Component {
                                     onClick={() => {this.setState({editLinesMode: false, hoveredId: null})}}
                                     startIcon={<CloseRoundedIcon />}
                                 >
-                                    Terminar
+                                    {this.props.t("finish")}
                                 </Button>
 
                                 : <Button

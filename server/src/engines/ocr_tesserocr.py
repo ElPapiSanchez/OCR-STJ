@@ -1,4 +1,5 @@
 import math
+import os
 import tempfile
 from os import remove
 
@@ -66,6 +67,7 @@ def get_structure(
     lang: str,
     config: dict | str,
     doc_path: str = "",
+    outputs_path: str = "",
     output_types: list[str] | None = None,
     segment_box: tuple | list[tuple] | None = None,
     single_page: bool = False,
@@ -76,12 +78,16 @@ def get_structure(
     :param page: The PIL image of the page, or its path.
     :param lang: The string of languages to use.
     :param config: OCR configuration options (dict).
-    :param doc_path: Path to the folder of the document being OCR'd.
+    :param doc_path: Path to the folder of the document being OCR'd (in _files).
+    :param outputs_path: Path to the outputs folder (in _outputs) for writing temp/output files.
     :param output_types: List of output types to auto-generate if the document being OCR'd only has one page.
     :param segment_box: Optional bounding box for a segment (left, top, right, bottom) or list of boxes.
     :param single_page: Whether this is the only page of the document being analysed. If yes, some result files can be immediately outputted.
     :return: Extracted text structure in the form of lines and words.
     """
+    # Use outputs_path if provided, otherwise fall back to doc_path (for backwards compatibility)
+    if not outputs_path:
+        outputs_path = doc_path
     # Ensure config is a dict, use defaults if not
     if not isinstance(config, dict):
         config = {
@@ -172,7 +178,9 @@ def get_structure(
         if output_types is None or len(output_types) == 0:
             output_types = ["hocr"]
 
-        output_base = f"{doc_path}/_export/_temp"
+        # Ensure outputs directory exists and use it for temp files
+        os.makedirs(outputs_path, exist_ok=True)
+        output_base = f"{outputs_path}/_temp"
         extensions = [ext for ext in output_types if ext in TESSERACT_OUTPUTS]
         if "hocr" not in extensions:
             extensions.append(
