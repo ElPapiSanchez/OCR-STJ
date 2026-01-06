@@ -585,9 +585,9 @@ def get_structure_info(inputs_base, files_base, private_space=None, is_private=F
     # Walk the _inputs tree
     for root, folders, files in os.walk(inputs_base, topdown=True):
         root = root.replace("\\", "/")
-        # ignore reserved folders by pruning them from search tree
-        folders[:] = [f for f in folders if not f.startswith("_")]
-        if root.split("/")[-1].startswith("_"):
+        # ignore reserved and hidden folders by pruning them from search tree
+        folders[:] = [f for f in folders if not f.startswith("_") and not f.startswith(".")]
+        if root.split("/")[-1].startswith("_") or root.split("/")[-1].startswith("."):
             continue
         # ignore possible private path folders
         if not is_private and (PRIVATE_PATH in root or root in PRIVATE_PATH.split("/")):
@@ -606,7 +606,7 @@ def get_structure_info(inputs_base, files_base, private_space=None, is_private=F
 
         # Also get info for files (documents) in this folder
         for filename in files:
-            if filename.startswith("_"):
+            if filename.startswith("_") or filename.startswith("."):
                 continue
             # For documents, the file is in _inputs, metadata folder is in _files
             doc_inputs_path = f"{root}/{filename}"
@@ -678,9 +678,10 @@ def get_structure(inputs_path, files_path, private_space=None, is_private=False)
     contents = []
 
     # List all items in inputs_path (both files and folders)
+    # Filter out hidden files (starting with "." or "_")
     items = sorted([
         f for f in os.listdir(inputs_path)
-        if not f.startswith("_")
+        if not f.startswith("_") and not f.startswith(".")
     ])
 
     for item in items:
@@ -692,6 +693,12 @@ def get_structure(inputs_path, files_path, private_space=None, is_private=False)
             continue
         # if in a private space, ignore items not from this private space
         if is_private and f"{PRIVATE_PATH}/{private_space}" not in item_inputs_path:
+            continue
+
+        # Only include items that have metadata in _files (have been synced)
+        item_data_path = f"{item_files_path}/_data.json"
+        if not os.path.exists(item_data_path):
+            # Item not synced yet - don't show in file list
             continue
 
         if os.path.isfile(item_inputs_path):

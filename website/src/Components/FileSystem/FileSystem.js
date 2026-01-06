@@ -19,6 +19,7 @@ import Typography from "@mui/material/Typography";
 import CreateNewFolderIcon from "@mui/icons-material/CreateNewFolder";
 import LockIcon from "@mui/icons-material/Lock";
 import NoteAddIcon from "@mui/icons-material/NoteAdd";
+import SyncIcon from "@mui/icons-material/Sync";
 
 import visuallyHidden from "@mui/utils/visuallyHidden";
 
@@ -31,12 +32,14 @@ import OcrMenu from 'Components/OcrMenu/OcrMenu';
 import LayoutMenu from 'Components/LayoutMenu/LayoutMenu';
 import EditingMenu from 'Components/EditingMenu/EditingMenu';
 import FolderMenu from 'Components/Form/FolderMenu';
+import SyncMenu from 'Components/Form/SyncMenu';
 import OcrPopup from 'Components/Form/OcrPopup';
 import DeletePopup from 'Components/Form/DeletePopup';
 import PrivateSpaceMenu from 'Components/Form/PrivateSpaceMenu';
 import DocumentRow from "./DocumentRow";
 import FolderRow from "./FolderRow";
 import ReturnButton from './ReturnButton';
+import { MODEL, UN_ARMS, STJ } from 'App';
 
 dayjs.extend(customParseFormat);
 
@@ -83,6 +86,7 @@ class FileExplorer extends React.Component {
         }
 
         this.folderMenu = React.createRef();
+        this.syncMenu = React.createRef();
         this.ocrPopup = React.createRef();
         this.deletePopup = React.createRef();
         this.privateSpaceMenu = React.createRef();
@@ -327,6 +331,23 @@ class FileExplorer extends React.Component {
             this.folderMenu.current.openMenu(path);
         } else {
             console.warn("[FileSystem] FolderMenu ref is null!");
+        }
+    }
+
+    /**
+     * Open the sync menu to import external files
+     */
+    openSyncMenu() {
+        console.log("[FileSystem] openSyncMenu called");
+        let path = this.props.current_folder;
+        if (this.props._private) { path = this.props.spaceId + '/' + path }
+
+        console.log("[FileSystem] syncMenu ref:", this.syncMenu);
+        if (this.syncMenu.current) {
+            console.log("[FileSystem] Calling syncMenu.openMenu() with path:", path);
+            this.syncMenu.current.openMenu(path);
+        } else {
+            console.warn("[FileSystem] SyncMenu ref is null!");
         }
     }
 
@@ -1192,6 +1213,17 @@ class FileExplorer extends React.Component {
                                             >
                                                 {this.props.t("new document")}
                                             </Button>
+
+                                            {MODEL !== STJ && (
+                                                <Button
+                                                    variant="outlined"
+                                                    startIcon={<SyncIcon/>}
+                                                    onClick={() => this.openSyncMenu()}
+                                                    className="menuButton menuFunctionButton noMarginRight"
+                                                >
+                                                    {this.props.t("sync")}
+                                                </Button>
+                                            )}
                                         </Box>
 
                                         {this.props.spaceId
@@ -1234,6 +1266,11 @@ class FileExplorer extends React.Component {
 
                                         <FolderMenu
                                             ref={this.folderMenu}
+                                            _private={this.props._private}
+                                            submitCallback={this.fetchFiles}
+                                        />
+                                        <SyncMenu
+                                            ref={this.syncMenu}
                                             _private={this.props._private}
                                             submitCallback={this.fetchFiles}
                                         />

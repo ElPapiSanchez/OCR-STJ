@@ -46,8 +46,8 @@ import Footer from 'Components/Footer/Footer';
 
 const API_URL = `${window.location.protocol}//${window.location.host}/${process.env.REACT_APP_API_URL}`;
 
-const STJ = 1;
-const UN_ARMS = 2;
+export const STJ = 1;
+export const UN_ARMS = 2;
 
 /**
  * About Versioning:
@@ -59,7 +59,7 @@ const UN_ARMS = 2;
 
 const VERSION = "1.4.1";
 
-const MODEL = STJ;
+export const MODEL = STJ;
 
 function App() {
     const [isAuthenticated, setIsAuthenticated] = useState(false);

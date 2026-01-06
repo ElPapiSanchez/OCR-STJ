@@ -109,5 +109,14 @@
     "lose results": "Irá perder os resultados e alterações anteriores!",
     "begin": "Começar",
     "clear all": "Limpar Tudo",
-    "alter existing config": "Alterar Configuração Existente"
+    "alter existing config": "Alterar Configuração Existente",
+    "sync": "Sincronizar",
+    "sync_title": "Sincronizar Ficheiros Externos",
+    "sync_description": "Importar ficheiros que foram adicionados diretamente à pasta de armazenamento. Escolha o âmbito da sincronização:",
+    "sync_current": "Apenas Pasta Atual",
+    "sync_recursive": "Todas as Subpastas",
+    "sync_success": "{count} ficheiro(s) importado(s)",
+    "sync_skipped": "{count} ficheiro(s) existente(s) ignorado(s)",
+    "sync_no_new": "Nenhum ficheiro novo encontrado",
+    "sync_error": "Erro ao sincronizar ficheiros"
 }

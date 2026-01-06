@@ -109,5 +109,14 @@
     "lose results": "You will lose your last results and previous changes!",
     "begin": "Start",
     "clear all": "Clear All",
-    "alter existing config": "Alter Existing Config"
+    "alter existing config": "Alter Existing Config",
+    "sync": "Sync",
+    "sync_title": "Sync External Files",
+    "sync_description": "Import files that were added directly to the storage folder. Choose the scope of the sync:",
+    "sync_current": "Current Folder Only",
+    "sync_recursive": "All Subfolders",
+    "sync_success": "Imported {count} file(s)",
+    "sync_skipped": "Skipped {count} existing file(s)",
+    "sync_no_new": "No new files found",
+    "sync_error": "Error syncing files"
 }

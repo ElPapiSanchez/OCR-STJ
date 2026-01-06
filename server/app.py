@@ -879,6 +879,173 @@ def upload_file():
     return {"success": True, "finished": False}
 
 
+@app.route("/sync-inputs", methods=["POST"])
+def sync_inputs():
+    """
+    Scan the _inputs folder for files that were added externally (not through upload)
+    and import them into the system by creating the necessary metadata and folder structure.
+    
+    Parameters:
+        - path: folder path to scan (relative to _inputs)
+        - recursive: whether to scan subfolders (default: false)
+        - _private: whether this is a private space
+    """
+    data = request.json or {}
+    recursive = data.get("recursive", False)
+    
+    # When recursive=True, always scan from root to find ALL new files in the entire system
+    # When recursive=False, scan only the current folder
+    if recursive:
+        # Always start from root when doing recursive sync
+        inputs_scan_path = INPUTS_PATH
+        files_scan_path = FILES_PATH
+        outputs_scan_path = OUTPUTS_PATH
+        is_private = "_private" in data and (data["_private"] == "true" or data["_private"] is True)
+        if is_private:
+            # For private spaces, we need to scan from the private space root
+            stripped_path = data.get("path", "").strip("/")
+            private_space = stripped_path.split("/")[0] if stripped_path else ""
+            if private_space:
+                inputs_scan_path = f"{PRIVATE_PATH}/{private_space}/_inputs"
+                files_scan_path = f"{PRIVATE_PATH}/{private_space}/_files"
+                outputs_scan_path = f"{PRIVATE_PATH}/{private_space}/_outputs"
+    elif "path" not in data or data["path"] == "":
+        # Root level, non-recursive
+        inputs_scan_path = INPUTS_PATH
+        files_scan_path = FILES_PATH
+        outputs_scan_path = OUTPUTS_PATH
+        is_private = False
+    else:
+        # Non-recursive scan of specific folder
+        inputs_scan_path, files_scan_path, outputs_scan_path, _, _, _, is_private = format_filesystem_path(data)
+    
+    if inputs_scan_path is None or not os.path.exists(inputs_scan_path):
+        return {"success": False, "error": "Path not found"}
+    
+    imported = []
+    skipped = 0
+    
+    def process_item(inputs_path, files_path, outputs_path, item_name, is_file):
+        """Process a single file or folder found in _inputs."""
+        nonlocal imported, skipped
+        
+        item_inputs_path = f"{inputs_path}/{item_name}"
+        item_files_path = f"{files_path}/{item_name}"
+        item_outputs_path = f"{outputs_path}/{item_name}"
+        data_json_path = f"{item_files_path}/_data.json"
+        
+        # Skip if already has metadata
+        if os.path.exists(data_json_path):
+            skipped += 1
+            return
+        
+        if is_file:
+            # Check if it's an allowed file type
+            extension = item_name.split(".")[-1].lower() if "." in item_name else ""
+            if extension not in ALLOWED_EXTENSIONS:
+                skipped += 1
+                return
+            
+            # Create document metadata folder in _files with subfolders
+            os.makedirs(item_files_path, exist_ok=True)
+            os.makedirs(f"{item_files_path}/_images", exist_ok=True)
+            os.makedirs(f"{item_files_path}/_layouts", exist_ok=True)
+            os.makedirs(f"{item_files_path}/_ocr_results", exist_ok=True)
+            os.makedirs(f"{item_files_path}/_pages", exist_ok=True)
+            os.makedirs(f"{item_files_path}/_thumbnails", exist_ok=True)
+            
+            # Create outputs folder
+            os.makedirs(item_outputs_path, exist_ok=True)
+            
+            # Create initial _data.json
+            with open(data_json_path, "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        "type": "file",
+                        "extension": extension if extension in ALLOWED_EXTENSIONS else "other",
+                        "stored": 0.00,
+                        "creation": get_current_time(),
+                        "status": {
+                            "stage": "uploading",
+                            "message": "A preparar ficheiro...",
+                        },
+                    },
+                    f,
+                    indent=2,
+                    ensure_ascii=False,
+                )
+            
+            # Call prepare_file task to extract pages and create thumbnails
+            celery.send_task(
+                "prepare_file",
+                kwargs={
+                    "inputs_path": item_inputs_path,
+                    "files_path": item_files_path
+                },
+                ignore_result=True
+            )
+            
+            imported.append({"path": item_name, "type": "file"})
+        else:
+            # It's a folder - create metadata
+            os.makedirs(item_files_path, exist_ok=True)
+            with open(data_json_path, "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        "type": "folder",
+                        "creation": get_current_time(),
+                    },
+                    f,
+                    indent=2,
+                    ensure_ascii=False,
+                )
+            imported.append({"path": item_name, "type": "folder"})
+    
+    def scan_directory(inputs_path, files_path, outputs_path):
+        """Scan a directory for new files/folders."""
+        if not os.path.exists(inputs_path) or not os.path.isdir(inputs_path):
+            return
+        
+        # Ensure parent folder has _data.json
+        if files_path != FILES_PATH and not os.path.exists(f"{files_path}/_data.json"):
+            os.makedirs(files_path, exist_ok=True)
+            with open(f"{files_path}/_data.json", "w", encoding="utf-8") as f:
+                json.dump(
+                    {
+                        "type": "folder",
+                        "creation": get_current_time(),
+                    },
+                    f,
+                    indent=2,
+                    ensure_ascii=False,
+                )
+        
+        for item in os.scandir(inputs_path):
+            if item.name.startswith("_") or item.name.startswith("."):
+                continue
+            
+            if item.is_file():
+                process_item(inputs_path, files_path, outputs_path, item.name, is_file=True)
+            elif item.is_dir():
+                process_item(inputs_path, files_path, outputs_path, item.name, is_file=False)
+                if recursive:
+                    scan_directory(
+                        f"{inputs_path}/{item.name}",
+                        f"{files_path}/{item.name}",
+                        f"{outputs_path}/{item.name}"
+                    )
+    
+    # Start scanning from the current folder
+    scan_directory(inputs_scan_path, files_scan_path, outputs_scan_path)
+    
+    return {
+        "success": True,
+        "imported": imported,
+        "skipped": skipped,
+        "message": f"Imported {len(imported)} items, skipped {skipped}"
+    }
+
+
 @app.route("/default-config", methods=["GET"])
 def get_default_ocr_config():
     """

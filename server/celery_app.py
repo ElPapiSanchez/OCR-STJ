@@ -417,7 +417,7 @@ def task_count_doc_pages(files_path: str = None, inputs_path: str = None, extens
         from_api = path.startswith(API_TEMP_PATH)
         if from_api:
             inputs_path = f"{path}/{get_file_basename(path)}.{extension}"
-        else:
+    else:
             inputs_path = path
     else:
         from_api = files_path.startswith(API_TEMP_PATH) if files_path else False

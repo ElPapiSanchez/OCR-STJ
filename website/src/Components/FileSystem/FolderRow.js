@@ -5,6 +5,7 @@ import {withTranslation} from "react-i18next";
 
 import TableCell from '@mui/material/TableCell';
 import TableRow from '@mui/material/TableRow';
+import CircularProgress from '@mui/material/CircularProgress';
 
 import FolderOpenRoundedIcon from '@mui/icons-material/FolderOpenRounded';
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
@@ -30,6 +31,13 @@ class FolderRow extends React.Component {
 
     updateInfo(info) {
         this.setState({info: info});
+    }
+
+    componentDidUpdate(prevProps) {
+        // Update state when props.info changes (e.g., after initial fetch)
+        if (prevProps.info !== this.props.info && this.props.info !== null) {
+            this.setState({ info: this.props.info });
+        }
     }
 
     handleOptionsClick(event) {
@@ -101,6 +109,17 @@ class FolderRow extends React.Component {
     }
 
     render() {
+        // Show loading state while info is being fetched
+        if (!this.state.info) {
+            return (
+                <TableRow className="explorerRow">
+                    <TableCell colSpan={6} align="center">
+                        <CircularProgress size={24} />
+                    </TableCell>
+                </TableRow>
+            );
+        }
+
         const contents = this.state.info?.["contents"];
         const nDocs = Number(contents?.["documents"]);
         const nSubfolders = Number(contents?.["subfolders"]);
