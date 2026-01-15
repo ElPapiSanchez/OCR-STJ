@@ -92,8 +92,21 @@ class LayoutMenu extends React.Component {
 		event.returnValue = '';
 	}
 
+    constructPath(includeSpaceId = false) {
+        // Build path correctly, avoiding double slashes
+        let parts = [];
+        if (includeSpaceId && this.props.spaceId) {
+            parts.push(this.props.spaceId);
+        }
+        if (this.props.current_folder) {
+            parts.push(this.props.current_folder);
+        }
+        parts.push(this.props.filename);
+        return parts.join('/');
+    }
+
     getLayouts() {
-        const path = (this.props.spaceId + '/' + this.props.current_folder + '/' + this.props.filename).replace(/^\//, '');
+        const path = this.constructPath(true);
         const is_private = this.props._private ? '_private=true&' : '';
         fetch(API_URL + '/get-layouts?' + is_private + 'path=' + path, {
             method: 'GET'
@@ -383,7 +396,7 @@ class LayoutMenu extends React.Component {
 	}
 
 	saveLayout(closeWindow = false) {
-        const path = (this.props.current_folder + '/' + this.props.filename).replace(/^\//, '');
+        const path = this.constructPath(false);
 		axios.post(API_URL + '/save-layouts',
             {
                 _private: this.props._private,
@@ -420,7 +433,7 @@ class LayoutMenu extends React.Component {
 		this.setState({ segmentLoading: true });
 		this.successNotifRef.current.openNotif(this.props.t("auto layout popup"));
 
-        const path = (this.props.current_folder + '/' + this.props.filename).replace(/^\//, '');
+        const path = this.constructPath(false);
 		axios.get(API_URL + '/generate-automatic-layouts', {
             params: {
                 _private: this.props._private,
@@ -742,7 +755,7 @@ class LayoutMenu extends React.Component {
     configureOCR(e, usingCustomConfig) {
         e.stopPropagation();
         const customConfig = usingCustomConfig ? this.state.info?.["config"] : null;
-        this.props.configureOCR(this.props.name, false, false, customConfig);
+        this.props.configureOCR(this.props.filename, false, false, customConfig);
     }
 
 	render() {

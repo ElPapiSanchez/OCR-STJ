@@ -417,7 +417,7 @@ def task_count_doc_pages(files_path: str = None, inputs_path: str = None, extens
         from_api = path.startswith(API_TEMP_PATH)
         if from_api:
             inputs_path = f"{path}/{get_file_basename(path)}.{extension}"
-    else:
+        else:
             inputs_path = path
     else:
         from_api = files_path.startswith(API_TEMP_PATH) if files_path else False
@@ -1570,6 +1570,39 @@ def task_export_results(files_path: str = None, outputs_path: str = None, output
                 }
             else:
                 data["ner"] = {"complete": False, "error": True}
+
+        if "hocr" in output_types and not data["hocr"]["complete"]:
+            update_json_file(
+                data_file,
+                {
+                    "status": {
+                        "stage": "exporting",
+                        "message": "A gerar hOCR",
+                    }
+                },
+            )
+            export_file(files_path, "hocr", outputs_path=outputs_path)
+            if os.path.exists(f"{outputs_path}/_hocr.hocr"):
+                data["hocr"] = {
+                    "complete": True,
+                    "size": size_to_units(
+                        get_file_size(f"{outputs_path}/_hocr.hocr", path_complete=True)
+                    ),
+                    "creation": get_current_time(),
+                }
+
+        if "xml" in output_types and not data["xml"]["complete"]:
+            update_json_file(
+                data_file,
+                {
+                    "status": {
+                        "stage": "exporting",
+                        "message": "A gerar ALTO XML",
+                    }
+                },
+            )
+            # ALTO export needs implementation
+            # export_file(files_path, "xml", outputs_path=outputs_path)
 
         if files_path.startswith(API_TEMP_PATH):
             original_extension = data["extension"]

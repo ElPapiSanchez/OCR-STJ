@@ -50,6 +50,7 @@ from src.utils.file import get_file_extension
 from src.utils.file import get_file_layouts
 from src.utils.file import get_file_parsed
 from src.utils.file import get_filesystem
+from src.utils.file import get_inherited_config
 from src.utils.file import get_structure_info
 from src.utils.file import get_word_count
 from src.utils.file import INPUTS_PATH
@@ -1178,9 +1179,20 @@ def request_ocr():
                 HTTPStatus.INTERNAL_SERVER_ERROR
             )  # TODO: improve feedback to users on error
 
-        # Replace specified config with saved config, if exists
-        if config is None and "config" in data:
-            config = data["config"]
+        # Determine which config to use (priority order):
+        # 1. Config passed in request
+        # 2. Document's own config
+        # 3. Inherited config from parent folders
+        file_config = config
+        if file_config is None:
+            # Check if document has its own config
+            if "config" in data and data["config"] != "default":
+                file_config = data["config"]
+            else:
+                # Try to inherit from parent folders
+                inherited = get_inherited_config(f_path, is_private)
+                if inherited:
+                    file_config = inherited
 
         # Remove indexed pages, which will become outdated
         results_path = f"{f_path}/_ocr_results"
@@ -1231,6 +1243,12 @@ def request_ocr():
                 "indexed": False,
             }
         )
+        
+        # Save the config being used (whether explicit, own, or inherited)
+        # This allows the UI to show what config is actually being applied
+        if file_config:
+            data["config"] = file_config
+        
         update_json_file(data_path, data)
 
         if os.path.exists(f"{f_path}/_images"):
@@ -1240,7 +1258,7 @@ def request_ocr():
             "file_ocr", kwargs={
                 "files_path": f_path,
                 "outputs_path": o_path,
-                "config": config
+                "config": file_config
             }, ignore_result=True
         )
 

@@ -47,8 +47,9 @@ class OcrMenu extends React.Component {
         const segments = tesseractSegmentList();
         const thresholds = tesseractThreshList();
         const outputs = tesseractOutputsList();
-        outputs[outputs.length - 2].disabled = !this.props.isSinglePage && !this.props.isFolder;
-        outputs[outputs.length - 1].disabled = !this.props.isSinglePage && !this.props.isFolder;
+        // hOCR and ALTO are now supported for multi-page documents
+        // outputs[outputs.length - 2].disabled = !this.props.isSinglePage && !this.props.isFolder;
+        // outputs[outputs.length - 1].disabled = !this.props.isSinglePage && !this.props.isFolder;
         this.state = {
             ...emptyConfig,
             presetsList: [],
@@ -119,12 +120,25 @@ class OcrMenu extends React.Component {
             });
     }
 
+    constructPath() {
+        // Build path correctly, avoiding double slashes
+        let parts = [];
+        if (this.props.spaceId) {
+            parts.push(this.props.spaceId);
+        }
+        if (this.props.current_folder) {
+            parts.push(this.props.current_folder);
+        }
+        parts.push(this.props.filename);
+        return parts.join('/');
+    }
+
     /**
      * Fetch the document's saved OCR config from the backend.
      * This ensures we always get the latest saved config.
      */
     fetchDocumentConfig() {
-        const path = (this.props.spaceId + '/' + this.props.current_folder + '/' + this.props.filename).replace(/^\//, '');
+        const path = this.constructPath();
         axios.get(API_URL + '/get-config', {
             params: {
                 _private: this.props._private,
@@ -289,7 +303,7 @@ class OcrMenu extends React.Component {
     }
 
     saveConfig(exit = false) {
-        const path = (this.props.spaceId + '/' + this.props.current_folder + '/' + this.props.filename).replace(/^\//, '');
+        const path = this.constructPath();
         const config = this.state.usingDefault ? "default" : this.getConfig();
         axios.post(API_URL + '/save-config',
             {

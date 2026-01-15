@@ -587,7 +587,8 @@ def get_structure_info(inputs_base, files_base, private_space=None, is_private=F
         root = root.replace("\\", "/")
         # ignore reserved and hidden folders by pruning them from search tree
         folders[:] = [f for f in folders if not f.startswith("_") and not f.startswith(".")]
-        if root.split("/")[-1].startswith("_") or root.split("/")[-1].startswith("."):
+        # Don't skip the base folder itself (e.g., _inputs at root of private space)
+        if root != inputs_base and (root.split("/")[-1].startswith("_") or root.split("/")[-1].startswith(".")):
             continue
         # ignore possible private path folders
         if not is_private and (PRIVATE_PATH in root or root in PRIVATE_PATH.split("/")):
@@ -822,6 +823,52 @@ def get_doc_len(file) -> int:
         if text == "":
             return -1
         return int(json.loads(text)["pages"])
+
+
+def get_inherited_config(files_path, is_private=False):
+    """
+    Get OCR configuration for a file/folder, checking parent folders if needed.
+    Walks up the folder hierarchy to find the first available configuration.
+    
+    :param files_path: path to the file/folder in _files
+    :param is_private: whether this is in a private space
+    :return: configuration dict or None
+    """
+    # Determine the root path to stop at
+    if is_private:
+        # For private spaces, stop at the private space root
+        # Path format: _files/_private_spaces/{space_id}/...
+        root_marker = f"{FILES_PATH}/{PRIVATE_PATH}"
+    else:
+        # For public files, stop at _files root
+        root_marker = FILES_PATH
+    
+    current_path = files_path
+    
+    # Walk up the folder hierarchy
+    while current_path and current_path.startswith(root_marker):
+        data_file = f"{current_path}/_data.json"
+        
+        try:
+            data = get_data(data_file)
+            if "config" in data and data["config"] != "default":
+                # Found a config, return it
+                return data["config"]
+        except (FileNotFoundError, JSONDecodeError):
+            # No data file or invalid JSON, continue up
+            pass
+        
+        # Move to parent folder
+        parent = os.path.dirname(current_path)
+        
+        # Stop if we've reached the root or can't go higher
+        if parent == current_path or parent == root_marker or not parent.startswith(root_marker):
+            break
+            
+        current_path = parent
+    
+    # No config found in hierarchy
+    return None
 
 
 def update_json_file(file, data, lock=None):

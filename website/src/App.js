@@ -254,120 +254,117 @@ function App() {
             const buttonsDisabled = this.state.ocrMenu || this.state.searchMenu || this.state.layoutMenu || this.state.editingMenu;
             return (
                 <Box className={`App ${MODEL === STJ ? "theme-stj" : "theme-un"}`}
-                     sx={{height: "100vh", display: "flex", flexDirection: "column"}}>
-                    <Box className="header"
+                     sx={{minHeight: "100vh", display: "flex", flexDirection: "column", backgroundColor: "var(--gray-50)"}}>
+                    <Box className="header animate-slideInDown"
                          sx={{
                             display: "flex",
-                            flexDirection: "row",
-                            justifyContent: "center",
-                             position: "relative",
+                            flexDirection: "column",
+                            gap: "var(--spacing-sm)",
+                            padding: "var(--spacing-md) var(--spacing-xl)",
                          }}
                     >
-                        <img
-                            src={MODEL === STJ ? logoSTJ : logoUN}
-                            alt={MODEL === STJ ? "Logótipo do STJ" : "Logótipo da UN"}
-                            style={{
-                                maxHeight: "50px",
-                                marginLeft: "10px",
-                                marginTop: "8px",
-                            }}
-                        />
-
-                        <Typography
-                            id="modal-modal-title"
-                            variant="h4"
-                            component="h1"
-                            className="fancy-font"
-                            sx={{
-                                textAlign: "center",
-                                margin: "auto",
-                            }}
-                        >
-                            {
-                                this.getPrivateSpaceId()
-                                    ? t("private space") + ' - ' + this.getPrivateSpaceId()
-                                    : t("title")
-                            }
-                        </Typography>
-
-                        <Box sx={{display: "flex", flexDirection: "row", lineHeight: "2rem"}}>
-                            {true || buttonsDisabled || Boolean(this.getPrivateSpaceId())  // FIXME: Remove "true ||" to re-enable indexing
-                                ? null
-                                : <Button
-                                    variant="contained"
-                                    startIcon={<SearchIcon />}
-                                    onClick={() => {
-                                        this.setState(searchMenuState)
-                                    }}
-                                    className="menuButton"
-                                    sx={{mr: '1.5rem'}}
-                                >
-                                    Pesquisar
-                                </Button>
-                            }
-
-                            <span style={{margin: 0, alignContent: "center"}}>
-                                {t("version") + ': ' + VERSION}
-                            </span>
-
-                            {/* TODO: update help document */}
-                            <Button
-                                variant="text"
-                                onClick={() => window.open("https://servico-ocr.gitbook.io/manual-ocr", '_blank')}
-                                startIcon={<HelpIcon/>}
-                                className="red-link"
-                                sx={{
-                                    marginLeft: '1.5rem',
-                                    marginRight: '0.5rem',
-                                    textTransform: 'none',
-                                    p: 0
-                                }}
-                            >
-                                Manual de Utilizador
-                            </Button>
-                        </Box>
-                    </Box>
-
-                    <Box
-                        sx={{
+                        <Box sx={{
                             display: "flex",
-                            justifyContent: "flex-end",
+                            flexDirection: "row",
+                            justifyContent: "space-between",
                             alignItems: "center",
-                            width: "95%",
-                            margin: "0 auto",
-                            marginTop: "0.3rem",
-                            gap: "0.5rem",
-                        }}
-                    >
-                        <Button
-                            variant="text"
-                            size="small"
-                            onClick={() => i18n.changeLanguage("pt")}
-                            sx={{
-                                minWidth: "auto",
-                                color: i18n.language === "pt" ? "primary.main" : "text.primary",
-                                textTransform: "none",
-                                fontWeight: i18n.language === "pt" ? "bold" : "normal",
-                                padding: 0,
-                            }}
-                        >
-                            PT
-                        </Button>
-                        <Typography variant="body2" sx={{ color: "text.secondary" }}>/</Typography>
-                        <Button
-                            variant="text"
-                            size="small"
-                            onClick={() => i18n.changeLanguage("en")}
-                            sx={{
-                                minWidth: "auto",
-                                color: i18n.language === "en" ? "primary.main" : "text.primary",
-                                textTransform: "none",
-                                fontWeight: i18n.language === "en" ? "bold" : "normal",
-                                padding: 0,
-                            }}
-                        >
-                            EN
-                        </Button>
+                            width: "100%",
+                        }}>
+                            <Box sx={{display: "flex", alignItems: "center", gap: "var(--spacing-md)"}}>
+                                <img
+                                    src={MODEL === STJ ? logoSTJ : logoUN}
+                                    alt={MODEL === STJ ? "Logótipo do STJ" : "Logótipo da UN"}
+                                    style={{
+                                        maxHeight: "45px",
+                                        transition: "transform var(--transition-base)",
+                                    }}
+                                    onMouseEnter={(e) => e.target.style.transform = "scale(1.05)"}
+                                    onMouseLeave={(e) => e.target.style.transform = "scale(1)"}
+                                />
+                                
+                                <Typography
+                                    variant="h5"
+                                    component="h1"
+                                    className="fancy-font"
+                                    sx={{
+                                        display: {xs: "none", md: "block"},
+                                        color: "var(--header-text)",
+                                    }}
+                                >
+                                    {
+                                        this.getPrivateSpaceId()
+                                            ? t("private space") + ' - ' + this.getPrivateSpaceId()
+                                            : t("title")
+                                    }
+                                </Typography>
+                            </Box>
+
+                            <Box sx={{display: "flex", alignItems: "center", gap: "var(--spacing-md)"}}>
+                                <Box sx={{display: "flex", alignItems: "center", gap: "var(--spacing-xs)"}}>
+                                    <Button
+                                        variant="text"
+                                        size="small"
+                                        onClick={() => i18n.changeLanguage("pt")}
+                                        sx={{
+                                            minWidth: "auto",
+                                            color: i18n.language === "pt" ? "var(--accent-primary)" : "var(--text-secondary)",
+                                            textTransform: "none",
+                                            fontWeight: i18n.language === "pt" ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
+                                            padding: "var(--spacing-xs) var(--spacing-sm)",
+                                            borderRadius: "var(--radius-md)",
+                                            transition: "all var(--transition-fast)",
+                                            '&:hover': {
+                                                backgroundColor: "var(--card-hover-bg)",
+                                            },
+                                        }}
+                                    >
+                                        PT
+                                    </Button>
+                                    <Typography variant="body2" sx={{ color: "var(--text-tertiary)" }}>|</Typography>
+                                    <Button
+                                        variant="text"
+                                        size="small"
+                                        onClick={() => i18n.changeLanguage("en")}
+                                        sx={{
+                                            minWidth: "auto",
+                                            color: i18n.language === "en" ? "var(--accent-primary)" : "var(--text-secondary)",
+                                            textTransform: "none",
+                                            fontWeight: i18n.language === "en" ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
+                                            padding: "var(--spacing-xs) var(--spacing-sm)",
+                                            borderRadius: "var(--radius-md)",
+                                            transition: "all var(--transition-fast)",
+                                            '&:hover': {
+                                                backgroundColor: "var(--card-hover-bg)",
+                                            },
+                                        }}
+                                    >
+                                        EN
+                                    </Button>
+                                </Box>
+
+                                <Typography variant="body2" sx={{ color: "var(--text-tertiary)", fontSize: "var(--font-size-xs)" }}>
+                                    {t("version")}: {VERSION}
+                                </Typography>
+
+                                <Button
+                                    variant="text"
+                                    onClick={() => window.open("https://servico-ocr.gitbook.io/manual-ocr", '_blank')}
+                                    startIcon={<HelpIcon/>}
+                                    className="red-link"
+                                    sx={{
+                                        textTransform: "none",
+                                        padding: "var(--spacing-xs) var(--spacing-sm)",
+                                        borderRadius: "var(--radius-md)",
+                                        fontSize: "var(--font-size-sm)",
+                                        '&:hover': {
+                                            backgroundColor: "var(--card-hover-bg)",
+                                        },
+                                    }}
+                                >
+                                    {t("user manual")}
+                                </Button>
+                            </Box>
+                        </Box>
                     </Box>
 
                     <Box sx={{
@@ -377,79 +374,103 @@ function App() {
                         marginLeft: 'auto',
                         marginRight: 'auto',
                         justifyContent: 'space-between',
-                        zIndex: '5',
-                        // border: '1px solid #000000',
-                        paddingTop: '0.5rem',
-                        paddingBottom: '0.5rem',
+                        alignItems: 'center',
+                        paddingTop: 'var(--spacing-sm)',
+                        paddingBottom: 'var(--spacing-sm)',
+                        marginBottom: 'var(--spacing-sm)',
                     }}>
-                        <Box sx={{display: "flex", flexDirection: "row"}}>
-                            <Box
-                                sx={{
-                                    display: 'flex',
-                                    flexDirection: 'row',
-                                    flexWrap: 'wrap',
-                                    ml: '0.2rem'
-                                }}
-                            >
-                                {
-                                    this.state.currentFolderPathList.map((folder, index) => {
-                                        const name = index > 0 ? folder : t("start");
-                                        const folderDepth = this.state.currentFolderPathList.length;
+                        <Box sx={{
+                            display: "flex",
+                            flexDirection: "row",
+                            alignItems: "center",
+                            backgroundColor: "var(--card-bg)",
+                            borderRadius: "var(--radius-lg)",
+                            padding: "var(--spacing-xs)",
+                            boxShadow: "var(--shadow-xs)",
+                            flexWrap: "wrap",
+                            gap: "var(--spacing-xs)",
+                        }}>
+                            {
+                                this.state.currentFolderPathList.map((folder, index) => {
+                                    const name = index > 0 ? folder : t("start");
+                                    const folderDepth = this.state.currentFolderPathList.length;
 
-                                        if (this.state.searchMenu && index > 0)
-                                            return null;
+                                    if (this.state.searchMenu && index > 0)
+                                        return null;
 
-                                        // Show hint of collapsed names when inside deep folder
-                                        if (folderDepth > 3 && index === 1) {
-                                            return (
-                                                <Box sx={{display: "flex", flexDirection: "row", lineHeight: "2rem"}}>
-                                                    <p key={index} style={{margin: 0}}>... /</p>
-                                                </Box>
-                                            )
-                                        }
-
-                                        // Hide intermediate folder names when inside deep folder
-                                        if (folderDepth > 3 && index > 0 && index < folderDepth - 2) return null;
-
-                                        // If not in menu or inside document "folder" containing original and results,
-                                        // make current folder non-clickable (folder names are clickable to go back)
-                                        if (!this.state.currentFileName && index > 0 && index === folderDepth - 1) {
-                                            return <p className="pathElement">
-                                                {name}
-                                            </p>
-                                        } else return (
-                                            <Box
-                                                sx={{
-                                                    display: 'flex',
-                                                    flexDirection: 'row',
-                                                    lineHeight: '2rem',
-                                                }}
-                                                key={"Box" + folder}
-                                            >
-                                                <Button
-                                                    disabled={!this.state.searchMenu && buttonsDisabled}
-                                                    key={folder}
-                                                    onClick={() => {
-                                                        if (index === 0 && this.state.searchMenu) {
-                                                            this.closeSearchMenu();
-                                                        } else {
-                                                            this.changeFolderFromPath(folder);
-                                                        }
-                                                    }}
-                                                    className="pathElement pathButton"
-                                                    variant="text"
-                                                >
-                                                    {name}
-                                                </Button>
-                                                <p key={index} style={{margin: 0}}>/</p>
+                                    // Show hint of collapsed names when inside deep folder
+                                    if (folderDepth > 3 && index === 1) {
+                                        return (
+                                            <Box key={index} sx={{display: "flex", alignItems: "center", gap: "var(--spacing-xs)"}}>
+                                                <Typography sx={{color: "var(--text-tertiary)", fontSize: "var(--font-size-sm)"}}>...</Typography>
+                                                <Typography sx={{color: "var(--text-tertiary)", fontSize: "var(--font-size-sm)"}}>/</Typography>
                                             </Box>
                                         )
-                                    })
-                                }
-                                <p className="pathElement">
+                                    }
+
+                                    // Hide intermediate folder names when inside deep folder
+                                    if (folderDepth > 3 && index > 0 && index < folderDepth - 2) return null;
+
+                                    // If not in menu or inside document "folder" containing original and results,
+                                    // make current folder non-clickable (folder names are clickable to go back)
+                                    if (!this.state.currentFileName && index > 0 && index === folderDepth - 1) {
+                                        return (
+                                            <Typography 
+                                                key={folder}
+                                                className="pathElement" 
+                                                sx={{
+                                                    color: "var(--text-primary)",
+                                                    fontWeight: "var(--font-weight-semibold)",
+                                                }}
+                                            >
+                                                {name}
+                                            </Typography>
+                                        )
+                                    } else return (
+                                        <Box
+                                            sx={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: 'var(--spacing-xs)',
+                                            }}
+                                            key={"Box" + folder}
+                                        >
+                                            <Button
+                                                disabled={!this.state.searchMenu && buttonsDisabled}
+                                                key={folder}
+                                                onClick={() => {
+                                                    if (index === 0 && this.state.searchMenu) {
+                                                        this.closeSearchMenu();
+                                                    } else {
+                                                        this.changeFolderFromPath(folder);
+                                                    }
+                                                }}
+                                                className="pathElement pathButton"
+                                                variant="text"
+                                                sx={{
+                                                    minHeight: "auto",
+                                                    fontSize: "var(--font-size-sm)",
+                                                }}
+                                            >
+                                                {name}
+                                            </Button>
+                                            <Typography sx={{color: "var(--text-tertiary)", fontSize: "var(--font-size-sm)"}}>/</Typography>
+                                        </Box>
+                                    )
+                                })
+                            }
+                            {this.state.currentFileName && (
+                                <Typography 
+                                    className="pathElement"
+                                    sx={{
+                                        color: "var(--text-primary)",
+                                        fontWeight: "var(--font-weight-semibold)",
+                                        fontSize: "var(--font-size-sm)",
+                                    }}
+                                >
                                     {this.state.currentFileName}
-                                </p>
-                            </Box>
+                                </Typography>
+                            )}
                         </Box>
                     </Box>
 

@@ -11,6 +11,7 @@ import FolderOpenRoundedIcon from '@mui/icons-material/FolderOpenRounded';
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
 import SettingsIcon from '@mui/icons-material/Settings';
 import SettingsSuggestIcon from '@mui/icons-material/SettingsSuggest';
+import TuneIcon from '@mui/icons-material/Tune';
 
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
@@ -208,6 +209,17 @@ class FolderRow extends React.Component {
                     }}>
                         <FolderOpenRoundedIcon color="success" sx={{ p: 0, fontSize: 30, mr: '0.5rem' }} />
                         <span>{this.props.name}</span>
+                        {usingCustomConfig && (
+                            <TuneIcon 
+                                sx={{ 
+                                    fontSize: '1rem', 
+                                    ml: '0.5rem', 
+                                    color: '#2196f3',
+                                    flexShrink: 0 
+                                }} 
+                                titleAccess={this.props.t("custom config")}
+                            />
+                        )}
                     </Box>
                 </TableCell>
 

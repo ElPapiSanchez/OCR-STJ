@@ -20,6 +20,10 @@ import CreateNewFolderIcon from "@mui/icons-material/CreateNewFolder";
 import LockIcon from "@mui/icons-material/Lock";
 import NoteAddIcon from "@mui/icons-material/NoteAdd";
 import SyncIcon from "@mui/icons-material/Sync";
+import GridViewIcon from '@mui/icons-material/GridView';
+import ViewListIcon from '@mui/icons-material/ViewList';
+import IconButton from '@mui/material/IconButton';
+import Tooltip from '@mui/material/Tooltip';
 
 import visuallyHidden from "@mui/utils/visuallyHidden";
 
@@ -38,6 +42,9 @@ import DeletePopup from 'Components/Form/DeletePopup';
 import PrivateSpaceMenu from 'Components/Form/PrivateSpaceMenu';
 import DocumentRow from "./DocumentRow";
 import FolderRow from "./FolderRow";
+import DocumentCard from "./DocumentCard";
+import FolderCard from "./FolderCard";
+import FileGridView from "./FileGridView";
 import ReturnButton from './ReturnButton';
 import { MODEL, UN_ARMS, STJ } from 'App';
 
@@ -81,9 +88,12 @@ class FileExplorer extends React.Component {
             components: [],
             order: "asc",
             orderBy: "name",
+            viewMode: localStorage.getItem('fileViewMode') || 'grid', // 'grid' or 'list'
 
             fetched: false,
         }
+        
+        this.handleViewModeChange = this.handleViewModeChange.bind(this);
 
         this.folderMenu = React.createRef();
         this.syncMenu = React.createRef();
@@ -132,11 +142,51 @@ class FileExplorer extends React.Component {
 
         // functions for menus
         this.fetchFiles = this.fetchFiles.bind(this);
+        
+        // keyboard shortcuts
+        this.setupKeyboardShortcuts = this.setupKeyboardShortcuts.bind(this);
+        this.handleKeyDown = this.handleKeyDown.bind(this);
+    }
+    
+    setupKeyboardShortcuts() {
+        // Setup keyboard event listeners
+        document.addEventListener('keydown', this.handleKeyDown);
+    }
+    
+    handleKeyDown(event) {
+        // Skip if in menu or typing in input field
+        if (this.props.ocrMenu || this.props.layoutMenu || this.props.editingMenu) return;
+        if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') return;
+        
+        const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+        const modifier = isMac ? event.metaKey : event.ctrlKey;
+        
+        // Ctrl/Cmd + U: Upload file
+        if (modifier && event.key === 'u') {
+            event.preventDefault();
+            if (this.props.current_folder !== "" || this.props._private) {
+                this.createFile();
+            }
+        }
+        
+        // Ctrl/Cmd + N: New folder
+        if (modifier && event.key === 'n') {
+            event.preventDefault();
+            this.createFolder();
+        }
+        
+        // Escape: Close menus if any
+        if (event.key === 'Escape') {
+            // Will be handled by individual menu components
+        }
     }
 
     componentDidMount() {
          // Fetch the files and info from the server
         this.fetchFileSystem();
+
+        // Setup keyboard shortcuts
+        this.setupKeyboardShortcuts();
 
         // Update the info every UPDATE_PERIOD_SECONDS seconds
         this.createFetchInfoInterval();
@@ -170,7 +220,9 @@ class FileExplorer extends React.Component {
             || this.state.files !== prevState.files) {                 // created/deleted document or folder
             this.displayFileSystem();
         } else if (this.state.info !== prevState.info) {  // fetched updated info
-            this.updateInfo();
+            // Regenerate components for both views to show updated status
+            // Refs don't work because components are pre-created and stored in state
+            this.displayFileSystem();
         }
     }
 
@@ -240,12 +292,14 @@ class FileExplorer extends React.Component {
      * Call after actions that create or delete documents/folders.
      */
     fetchFiles() {
+        const requestPath = this.props._private
+            ? this.props.spaceId + '/' + this.props.current_folder
+            : this.props.current_folder;
+        
         axios.get(API_URL + '/files', {
             params: {
                 _private: this.props._private,
-                path: (this.props._private
-                        ? this.props.spaceId + '/' + this.props.current_folder
-                        : this.props.current_folder)
+                path: requestPath
             }
         })
             .then(response => {
@@ -254,9 +308,13 @@ class FileExplorer extends React.Component {
                 }
                 const files = response.data['files'];
                 const info = response.data["info"];
-                this.setState({files: files, info: info, updateCount: 0});
+                this.setState({files: files, info: info, updateCount: 0}, () => {
+                    // Ensure the file list is refreshed after state update
+                    this.displayFileSystem();
+                });
             })
             .catch(err => {
+                console.error('[fetchFiles] Error:', err);
                 this.storageMenu.current.openWithMessage(err.message);
             });
     }
@@ -285,6 +343,70 @@ class FileExplorer extends React.Component {
                     throw new Error("Não foi possível obter os dados do servidor.");
                 }
                 const info = response.data["info"];
+                
+                // Check if any files are processing (uploading, preparing, or OCR)
+                // If so, start the monitoring interval if not already running
+                let anyProcessing = false;
+                for (const [path, fileInfo] of Object.entries(info)) {
+                    if (fileInfo.type === "file") {
+                        const isUploading = fileInfo.stored !== true;
+                        const isOCRing = fileInfo.ocr && 
+                                        fileInfo.pages && 
+                                        fileInfo.ocr.progress < fileInfo.pages;
+                        
+                        if (isUploading || isOCRing) {
+                            anyProcessing = true;
+                            break;
+                        }
+                    }
+                }
+                
+                // Start monitoring interval if needed
+                if (anyProcessing && !this.uploadingCheckInterval) {
+                    this.uploadingCheckInterval = setInterval(() => {
+                        axios.get(API_URL + '/info', {
+                            params: {
+                                _private: this.props._private,
+                                path: (this.props._private
+                                    ? this.props.spaceId
+                                    : this.props.current_folder)
+                            }
+                        })
+                            .then(response => {
+                                if (response.status !== 200) {
+                                    throw new Error("Não foi possível obter os dados do servidor.");
+                                }
+                                const info = response.data["info"];
+                                
+                                // Check if any files are still uploading, preparing, or performing OCR
+                                let anyProcessing = false;
+                                for (const [path, fileInfo] of Object.entries(info)) {
+                                    if (fileInfo.type === "file") {
+                                        // Check if uploading/preparing
+                                        const isUploading = fileInfo.stored !== true;
+                                        // Check if OCR is in progress
+                                        const isOCRing = fileInfo.ocr && 
+                                                        fileInfo.pages && 
+                                                        fileInfo.ocr.progress < fileInfo.pages;
+                                        
+                                        if (isUploading || isOCRing) {
+                                            anyProcessing = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                                
+                                // If no files are processing, clear the interval
+                                if (!anyProcessing) {
+                                    clearInterval(this.uploadingCheckInterval);
+                                    this.uploadingCheckInterval = null;
+                                }
+                                
+                                this.setState({info: info});
+                            });
+                    }, 1000 * UPLOAD_UPDATE_SECONDS);
+                }
+                
                 this.setState({info: info, updateCount: 0});
             })
             .catch(err => {
@@ -313,6 +435,8 @@ class FileExplorer extends React.Component {
             clearInterval(this.stuckInterval);
         if (this.uploadingCheckInterval)
             clearInterval(this.uploadingCheckInterval);
+        // Remove keyboard event listener
+        document.removeEventListener('keydown', this.handleKeyDown);
     }
 
     /**
@@ -342,12 +466,8 @@ class FileExplorer extends React.Component {
         let path = this.props.current_folder;
         if (this.props._private) { path = this.props.spaceId + '/' + path }
 
-        console.log("[FileSystem] syncMenu ref:", this.syncMenu);
         if (this.syncMenu.current) {
-            console.log("[FileSystem] Calling syncMenu.openMenu() with path:", path);
             this.syncMenu.current.openMenu(path);
-        } else {
-            console.warn("[FileSystem] SyncMenu ref is null!");
         }
     }
 
@@ -382,7 +502,7 @@ class FileExplorer extends React.Component {
             if (data['success']) {
                 // Update upload status every UPLOAD_UPDATE_SECONDS seconds
                 if (!this.uploadingCheckInterval) {
-                    this.uploadingCheckInterval = setInterval((fileName) => {
+                    this.uploadingCheckInterval = setInterval(() => {
                         axios.get(API_URL + '/info', {
                             params: {
                                 _private: this.props._private,
@@ -396,15 +516,34 @@ class FileExplorer extends React.Component {
                                     throw new Error("Não foi possível obter os dados do servidor.");
                                 }
                                 const info = response.data["info"];
-                                const uploadInfo = this.getInfo(fileName)
-                                // If upload is finished, end interval
-                                if (uploadInfo["stored"]) {
-                                    clearInterval(this.uploadingCheckInterval);
+                                
+                                // Check if any files are still uploading, preparing, or performing OCR
+                                let anyProcessing = false;
+                                for (const [path, fileInfo] of Object.entries(info)) {
+                                    if (fileInfo.type === "file") {
+                                        // Check if uploading/preparing
+                                        const isUploading = fileInfo.stored !== true;
+                                        // Check if OCR is in progress
+                                        const isOCRing = fileInfo.ocr && 
+                                                        fileInfo.pages && 
+                                                        fileInfo.ocr.progress < fileInfo.pages;
+                                        
+                                        if (isUploading || isOCRing) {
+                                            anyProcessing = true;
+                                            break;
+                                        }
+                                    }
                                 }
+                                
+                                // If no files are processing, clear the interval
+                                if (!anyProcessing) {
+                                    clearInterval(this.uploadingCheckInterval);
+                                    this.uploadingCheckInterval = null;
+                                }
+                                
                                 this.setState({info: info});
-
                             });
-                    }, 1000 * UPLOAD_UPDATE_SECONDS, fileName);
+                    }, 1000 * UPLOAD_UPDATE_SECONDS);
                 }
 
                 if (i + 1 === _totalCount) {
@@ -479,7 +618,10 @@ class FileExplorer extends React.Component {
                         fileName = data["filename"];  // update filename if server changed it due to name collisions
 
                         //// Update list of files on screen after upload of first chunk
-                        this.fetchFiles();
+                        // Add a small delay to ensure backend has finished creating metadata
+                        setTimeout(() => {
+                            this.fetchFiles();
+                        }, 100);
 
                         // Send chunks
                         let startChunk = 0;
@@ -825,60 +967,92 @@ class FileExplorer extends React.Component {
         }
     }
 
+    handleViewModeChange(newMode) {
+        this.setState({ viewMode: newMode }, () => {
+            this.displayFileSystem();
+        });
+        localStorage.setItem('fileViewMode', newMode);
+    }
+
     displayFileSystem() {
         /**
          * Iterate the contents of the folder and build the components
          */
         if (this.props.ocrMenu || this.props.layoutMenu || this.props.editingMenu) return;
-
+        
         this.rowRefs = [];
         const items = [];
+        const viewMode = this.state.viewMode;
 
         for (let item of this.sortContents(this.getPathContents())) {
             let ref = React.createRef();
             this.rowRefs.push(ref);
 
-            if (typeof item === 'string' || item instanceof String) {
-                items.push(
-                    <DocumentRow
-                        ref={ref}
-                        key={this.props.current_folder + "/" + item}
-                        name={item}
-                        thumbnails={{
-                            small: `${this.props._private ? `${this.props.spaceId}/` : ''}` + `${this.props.current_folder}/${item}/_thumbnails/${item}_128.thumbnail`,
-                            large: `${this.props._private ? `${this.props.spaceId}/` : ''}` + `${this.props.current_folder}/${item}/_thumbnails/${item}_600.thumbnail`,
-                        }}
-                        _private={this.props._private}
-                        info={this.getInfo(item)}
-                        enterDocument={this.enterFolder}
-                        deleteItem={this.deleteItem}
-                        getOriginalFile={this.getOriginalFile}
-                        getDocument={this.getDocument}
-                        getEntities={this.getEntities}
-                        requestEntities={this.requestEntities}
-                        getImages={this.getImages}
-                        editText={this.editText}
-                        performOCR={this.performOCR}
-                        configureOCR={this.configureOCR}
-                        indexFile={this.props._private ? null : this.indexFile}
-                        removeIndexFile={this.props._private ? null : this.removeIndexFile}
-                        createLayout={this.createLayout}
-                    />
-                )
+            const isDocument = typeof item === 'string' || item instanceof String;
+            const itemName = isDocument ? item : Object.keys(item)[0];
+
+            // Common props for both view modes
+            const itemInfo = this.getInfo(itemName);
+            // Include stored status and OCR progress in key to force re-render when they change
+            const ocrProgress = itemInfo?.ocr?.progress || 0;
+            const itemKey = this.props.current_folder + "/" + itemName + "/" + (itemInfo?.stored || 'unknown') + "/" + ocrProgress;
+            const commonProps = {
+                ref: ref,
+                key: itemKey,
+                name: itemName,
+                info: itemInfo,
+                _private: this.props._private,
+                deleteItem: this.deleteItem,
+                performOCR: this.performOCR,
+                configureOCR: this.configureOCR,
+            };
+
+            if (isDocument) {
+                // Construct thumbnail path correctly, avoiding double slashes
+                const pathParts = [];
+                if (this.props._private && this.props.spaceId) {
+                    pathParts.push(this.props.spaceId);
+                }
+                if (this.props.current_folder) {
+                    pathParts.push(this.props.current_folder);
+                }
+                pathParts.push(itemName);
+                const basePath = pathParts.join('/');
+
+                const docProps = {
+                    ...commonProps,
+                    thumbnails: {
+                        small: `${basePath}/_thumbnails/${itemName}_128.thumbnail`,
+                        large: `${basePath}/_thumbnails/${itemName}_600.thumbnail`,
+                    },
+                    enterDocument: this.enterFolder,
+                    getOriginalFile: this.getOriginalFile,
+                    getDocument: this.getDocument,
+                    getEntities: this.getEntities,
+                    requestEntities: this.requestEntities,
+                    getImages: this.getImages,
+                    editText: this.editText,
+                    indexFile: this.props._private ? null : this.indexFile,
+                    removeIndexFile: this.props._private ? null : this.removeIndexFile,
+                    createLayout: this.createLayout,
+                };
+
+                if (viewMode === 'grid') {
+                    items.push(<DocumentCard {...docProps} />);
+                } else {
+                    items.push(<DocumentRow {...docProps} />);
+                }
             } else {
-                const key = Object.keys(item)[0];
-                items.push(
-                    <FolderRow
-                        ref={ref}
-                        key={this.props.current_folder + "/" + key}
-                        name={key}
-                        info={this.getInfo(key)}
-                        enterFolder={this.enterFolder}
-                        performOCR={this.performOCR}
-                        configureOCR={this.configureOCR}
-                        deleteItem={this.deleteItem}
-                    />
-                )
+                const folderProps = {
+                    ...commonProps,
+                    enterFolder: this.enterFolder,
+                };
+
+                if (viewMode === 'grid') {
+                    items.push(<FolderCard {...folderProps} />);
+                } else {
+                    items.push(<FolderRow {...folderProps} />);
+                }
             }
         }
         this.setState({components: items});
@@ -1296,8 +1470,45 @@ class FileExplorer extends React.Component {
                                                 : null
                                         }
 
+                                        {/* View Mode Toggle */}
+                                        <Box
+                                            sx={{
+                                                display: 'flex',
+                                                justifyContent: 'flex-end',
+                                                mb: 'var(--spacing-md)',
+                                                px: 'var(--spacing-md)',
+                                            }}
+                                        >
+                                            <Box className="view-toggle-container">
+                                                <Tooltip title={this.props.t("grid view")}>
+                                                    <IconButton
+                                                        size="small"
+                                                        onClick={() => this.state.viewMode !== 'grid' && this.handleViewModeChange('grid')}
+                                                        className={`view-toggle-button ${this.state.viewMode === 'grid' ? 'active' : ''}`}
+                                                    >
+                                                        <GridViewIcon fontSize="small" />
+                                                    </IconButton>
+                                                </Tooltip>
+                                                <Tooltip title={this.props.t("list view")}>
+                                                    <IconButton
+                                                        size="small"
+                                                        onClick={() => this.state.viewMode !== 'list' && this.handleViewModeChange('list')}
+                                                        className={`view-toggle-button ${this.state.viewMode === 'list' ? 'active' : ''}`}
+                                                    >
+                                                        <ViewListIcon fontSize="small" />
+                                                    </IconButton>
+                                                </Tooltip>
+                                            </Box>
+                                        </Box>
+
                                         {
-                                            this.generateTable()
+                                            this.state.viewMode === 'grid' 
+                                                ? <FileGridView 
+                                                    items={this.state.components}
+                                                    showViewToggle={false}
+                                                    onViewModeChange={this.handleViewModeChange}
+                                                  />
+                                                : this.generateTable()
                                         }
                                     </Box>
                                 </>

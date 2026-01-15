@@ -19,6 +19,7 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import SettingsIcon from '@mui/icons-material/Settings';
 import SettingsSuggestIcon from '@mui/icons-material/SettingsSuggest';
+import TuneIcon from '@mui/icons-material/Tune';
 
 import FileIcon from 'Components/CustomIcons/FileIcon';
 import OcrIcon from 'Components/CustomIcons/OcrIcon';
@@ -414,6 +415,17 @@ class DocumentRow extends React.Component {
                                 {this.state.expanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                             </IconButton>
                             <span>{this.props.name}</span>
+                            {usingCustomConfig && (
+                                <TuneIcon 
+                                    sx={{ 
+                                        fontSize: '1rem', 
+                                        ml: '0.5rem', 
+                                        color: '#2196f3',
+                                        flexShrink: 0 
+                                    }} 
+                                    titleAccess={this.props.t("custom config")}
+                                />
+                            )}
                         </Box>
                     </TableCell>
 

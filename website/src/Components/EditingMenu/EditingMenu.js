@@ -289,12 +289,25 @@ class EditingMenu extends React.Component {
         this.confirmLeave.current.toggleOpen();
     }
 
+    constructPath(includeSpaceId = false) {
+        // Build path correctly, avoiding double slashes
+        let parts = [];
+        if (includeSpaceId && this.props.spaceId) {
+            parts.push(this.props.spaceId);
+        }
+        if (this.props.current_folder) {
+            parts.push(this.props.current_folder);
+        }
+        parts.push(this.props.filename);
+        return parts.join('/');
+    }
+
     getContents(page = 1) {
-        const path = (this.props.current_folder + '/' + this.props.filename).replace(/^\//, '');
+        const path = this.constructPath(this.props._private);
         axios.get(API_URL + '/get-text-content', {
             params: {
                 _private: this.props._private,
-                path: (this.props._private ? this.props.spaceId + '/' + path : path),
+                path: path,
                 page: page,
             }
         })

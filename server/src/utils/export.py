@@ -86,10 +86,21 @@ def export_file(
 
     func = globals()[f"export_{filetype}"]
 
-    if not delimiter:
-        return func(files_path, outputs_path=outputs_path, force_recreate=force_recreate)
+    # Prepare common arguments
+    kwargs = {
+        'outputs_path': outputs_path,
+        'force_recreate': force_recreate
+    }
+    
+    # Add inputs_path if provided (needed for PDF export)
+    if inputs_path is not None:
+        kwargs['inputs_path'] = inputs_path
+    
+    # Add delimiter if specified (for txt exports)
+    if delimiter:
+        kwargs['delimiter'] = delimiter
 
-    return func(files_path, outputs_path=outputs_path, delimiter=delimiter, force_recreate=force_recreate)
+    return func(files_path, **kwargs)
 
 
 def export_from_existing(files_path: str, outputs_path: str, raw_results: dict | list, output_types: list):
@@ -1001,6 +1012,117 @@ def create_document_mets(path):
 
     with open(f"{path}/_mets.xml", "w") as f:
         f.write(xml)
+
+
+def export_hocr(files_path, outputs_path=None, force_recreate=False):
+    """
+    Export OCR results as hOCR format.
+    
+    :param files_path: path to document folder in _files (contains _ocr_results)
+    :param outputs_path: path to document folder in _outputs (for writing hocr)
+    :param force_recreate: force the recreation of the file
+    :return: the path to the exported file
+    """
+    # Calculate outputs_path if not provided
+    if outputs_path is None:
+        relative_path = files_path.replace(FILES_PATH, "").strip("/")
+        outputs_path = f"{OUTPUTS_PATH}/{relative_path}"
+    
+    # Ensure outputs directory exists
+    if not os.path.exists(outputs_path):
+        os.makedirs(outputs_path, exist_ok=True)
+    
+    target = f"{outputs_path}/_hocr.hocr"
+    data_file = f"{files_path}/_data.json"
+    
+    if os.path.exists(target) and not force_recreate:
+        return target
+    
+    # Get all OCR result JSON files
+    ocr_results_path = f"{files_path}/_ocr_results"
+    if not os.path.exists(ocr_results_path):
+        return None
+    
+    files = sorted([
+        f"{ocr_results_path}/{f}"
+        for f in os.listdir(ocr_results_path)
+        if f.endswith(".json")
+    ])
+    
+    if not files:
+        return None
+    
+    # Build hOCR XML structure
+    hocr_content = []
+    hocr_content.append('<?xml version="1.0" encoding="UTF-8"?>')
+    hocr_content.append('<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">')
+    hocr_content.append('<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">')
+    hocr_content.append('<head>')
+    hocr_content.append('<title>hOCR</title>')
+    hocr_content.append('<meta http-equiv="content-type" content="text/html; charset=utf-8" />')
+    hocr_content.append('<meta name="ocr-system" content="tesseract" />')
+    hocr_content.append('<meta name="ocr-capabilities" content="ocr_page ocr_carea ocr_par ocr_line ocrx_word" />')
+    hocr_content.append('</head>')
+    hocr_content.append('<body>')
+    
+    # Process each page
+    for page_idx, json_file in enumerate(files):
+        with open(json_file, encoding="utf-8") as f:
+            page_data = json.load(f)
+        
+        hocr_content.append(f'<div class="ocr_page" id="page_{page_idx + 1}" title="image; bbox 0 0 1000 1000">')
+        
+        # Process paragraphs (sections)
+        for para_idx, paragraph in enumerate(page_data):
+            hocr_content.append(f'<div class="ocr_carea" id="page_{page_idx + 1}_para_{para_idx}">')
+            
+            # Process lines
+            for line_idx, line in enumerate(paragraph):
+                if not line:
+                    continue
+                    
+                # Calculate line bounding box
+                line_boxes = [word["box"] for word in line if "box" in word]
+                if line_boxes:
+                    x0 = min(box[0] for box in line_boxes)
+                    y0 = min(box[1] for box in line_boxes)
+                    x1 = max(box[2] for box in line_boxes)
+                    y1 = max(box[3] for box in line_boxes)
+                    
+                    hocr_content.append(f'<span class="ocr_line" id="page_{page_idx + 1}_line_{line_idx}" title="bbox {int(x0)} {int(y0)} {int(x1)} {int(y1)}">')
+                    
+                    # Process words
+                    for word_idx, word in enumerate(line):
+                        if "box" in word and "text" in word:
+                            box = word["box"]
+                            text = word["text"].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+                            conf = word.get("conf", 95)
+                            hocr_content.append(f'<span class="ocrx_word" id="page_{page_idx + 1}_word_{word_idx}" title="bbox {int(box[0])} {int(box[1])} {int(box[2])} {int(box[3])}; x_wconf {int(conf)}">{text}</span>')
+                    
+                    hocr_content.append('</span>')
+            
+            hocr_content.append('</div>')
+        
+        hocr_content.append('</div>')
+    
+    hocr_content.append('</body>')
+    hocr_content.append('</html>')
+    
+    # Write to file
+    with open(target, "w", encoding="utf-8") as f:
+        f.write("\n".join(hocr_content))
+    
+    # Update metadata
+    data_update = {
+        "hocr": {
+            "complete": True,
+            "size": size_to_units(get_file_size(target, path_complete=True)),
+            "creation": get_current_time(),
+        }
+    }
+    update_json_file(data_file, data_update)
+    
+    return target
 
 
 def export_alto(path):
