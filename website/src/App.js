@@ -64,7 +64,7 @@ export const UN_ARMS = 2;
  * PATCH version when you make backwards compatible bug fixes
  */
 
-const VERSION = "1.4.1";
+const VERSION = "1.5.0";
 
 export const MODEL = STJ;
 
