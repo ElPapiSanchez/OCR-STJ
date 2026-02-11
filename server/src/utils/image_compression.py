@@ -1,6 +1,5 @@
 import os
 import io
-import gc
 from typing import Optional, Tuple
 
 import numpy as np
@@ -188,9 +187,21 @@ def _iter_pil_pages_from_tiff_bytes(tiff_bytes: bytes):
         yield pil_page.convert("RGB")
 
 
-# -------------------------------
-# 3. Callable pipeline (NO CLI, NO hOCR)
-# -------------------------------
+def jpeg_roundtrip_pil(img: Image.Image, quality: int, *, subsampling=2, optimize=True, progressive=True) -> Image.Image:
+    """
+    Encode to JPEG bytes then decode back to PIL.
+    subsampling: 0=4:4:4, 1=4:2:2, 2=4:2:0 (common/smaller)
+    """
+    b = encode_pil_to_bytes(
+        img.convert("RGB"),
+        "JPEG",
+        quality=int(quality),
+        subsampling=subsampling,
+        optimize=optimize,
+        progressive=progressive,
+    )
+    return Image.open(io.BytesIO(b)).convert("RGB")
+
 
 def mrc_pdf_from_bytes(
     file_bytes: bytes,
@@ -363,7 +374,7 @@ def mrc_pdf_from_bytes(
         
         total_page_size = len(bg_bytes) + len(fg_bytes) + len(mask_bytes)
         print(f"✓ ({total_page_size / 1024:.1f} KB)")
-        
+
         # Optional dump to disk
         if output_components_dir:
             tag = f"p{page_index:04d}"
@@ -379,11 +390,23 @@ def mrc_pdf_from_bytes(
         rect = fitz.Rect(0, 0, width_pt, height_pt)
 
         if flatten_to_jpeg:
-            # Flatten FG over BG using mask, then store as a single JPEG
-            flat_img = Image.composite(fg_img, bg_img, mask_img)
-            flat_bytes = encode_pil_to_bytes(flat_img, "JPEG", quality=flatten_quality)
+            # 1) Pre-compress BG/FG first (lossy), then decode back
+            bg_j = jpeg_roundtrip_pil(bg_img, quality=bg_quality)
+            fg_j = jpeg_roundtrip_pil(fg_img, quality=fg_quality)
 
-            # Optional dump
+            # 2) Composite AFTER lossy BG/FG compression
+            flat_img = Image.composite(fg_j, bg_j, mask_img)
+
+            # 3) Final JPEG encode of the flattened page
+            flat_bytes = encode_pil_to_bytes(
+                flat_img,
+                "JPEG",
+                quality=flatten_quality,
+                subsampling=2,
+                optimize=True,
+                progressive=True,
+            )
+
             if output_components_dir:
                 tag = f"p{page_index:04d}"
                 with open(os.path.join(output_components_dir, f"{tag}_flat.jpg"), "wb") as f:
@@ -391,7 +414,22 @@ def mrc_pdf_from_bytes(
 
             page.insert_image(rect, stream=flat_bytes, overlay=False)
 
+
         else:
+            bg_bytes = encode_pil_to_bytes(bg_img, bg_format, quality=bg_quality)
+            fg_bytes = encode_pil_to_bytes(fg_img, fg_format, quality=fg_quality)
+            mask_bytes = encode_pil_to_bytes(mask_img, "PNG", optimize=True)
+
+            # Optional dump
+            if output_components_dir:
+                tag = f"p{page_index:04d}"
+                with open(os.path.join(output_components_dir, f"{tag}_bg.{bg_format.lower()}"), "wb") as f:
+                    f.write(bg_bytes)
+                with open(os.path.join(output_components_dir, f"{tag}_fg.{fg_format.lower()}"), "wb") as f:
+                    f.write(fg_bytes)
+                with open(os.path.join(output_components_dir, f"{tag}_mask.png"), "wb") as f:
+                    f.write(mask_bytes)
+
             page.insert_image(rect, stream=bg_bytes, overlay=False)
             page.insert_image(rect, stream=fg_bytes, mask=mask_bytes, overlay=True)
         
