@@ -3,6 +3,8 @@ volumes:
   # elasticsearch_data: {}
   files_data: {}
   configs_data: {}
+  inputs_data: {}
+  outputs_data: {}
 
 services:
   server:
@@ -31,6 +33,8 @@ services:
     volumes:
       - files_data:/app/_files
       - configs_data:/app/_configs
+      - inputs_data:/app/_inputs
+      - outputs_data:/app/_outputs
     restart: unless-stopped
     networks:
       - internal-network
@@ -62,6 +66,8 @@ services:
     volumes:
       - files_data:/app/_files
       - configs_data:/app/_configs
+      - inputs_data:/app/_inputs
+      - outputs_data:/app/_outputs
     depends_on:
       redis:
         condition: service_healthy
@@ -102,6 +108,8 @@ services:
       start_period: 10s
     volumes:
       - files_data:/app/_files
+      - inputs_data:/app/_inputs
+      - outputs_data:/app/_outputs
     restart: unless-stopped
     networks:
       - internal-network
