@@ -1142,7 +1142,7 @@ def request_ocr():
 
     JSON parameters:
     - path: path to the file/folder\n
-    - config: configuration to be used in OCR\n
+    - config: configuration to be used in OCR (dict or preset name string)\n
     - multiple: if it is a folder or not\n
     """
 
@@ -1158,6 +1158,27 @@ def request_ocr():
         abort(HTTPStatus.NOT_FOUND)
 
     config = req_data["config"] if "config" in req_data else None
+    
+    # If config is a preset name (string), load the preset file
+    if config is not None and isinstance(config, str):
+        preset_name = config
+        preset_path = safe_join(CONFIG_FILES_LOCATION, f"{preset_name}.json")
+        if preset_path and os.path.exists(preset_path):
+            try:
+                with open(preset_path, "r", encoding="utf-8") as f:
+                    config = json.load(f)
+            except (json.JSONDecodeError, IOError) as e:
+                log.error(f"Failed to load preset '{preset_name}': {e}")
+                return {
+                    "success": False,
+                    "message": f"Erro ao carregar preset '{preset_name}'",
+                }
+        else:
+            return {
+                "success": False,
+                "message": f"Preset '{preset_name}' não existe",
+            }
+    
     multiple = req_data["multiple"] if "multiple" in req_data else False
 
     if multiple:
@@ -1381,6 +1402,7 @@ def submit_text():
 
     try:
         data = get_data(data_path)
+        log.info(f"[DEBUG submit_text] Loaded data from {data_path}, config is: {data.get('config', 'NO CONFIG KEY')}")
         if not remake_files:
             data["edited_results"] = True
         elif "edited_results" in data:
@@ -1406,6 +1428,7 @@ def submit_text():
     update_json_file(data_path, data_update)
 
     if remake_files:
+        log.info(f"[DEBUG submit_text] Sending to make_changes with config: {data.get('config', 'NO CONFIG KEY')}")
         celery.send_task(
             "make_changes", kwargs={"path": path, "data": data}, ignore_result=True
         )
@@ -1602,6 +1625,33 @@ def api_perform_ocr():
 
     file = request.files["file"]
     config = request.form.get("config", None)
+    
+    # Handle config parameter: can be preset name (string), JSON string (dict), or None
+    if config is not None and config != "":
+        # Try to parse as JSON first (for dict configs)
+        try:
+            config = json.loads(config)
+        except (json.JSONDecodeError, TypeError):
+            # If not valid JSON, treat as preset name
+            preset_name = config
+            preset_path = safe_join(CONFIG_FILES_LOCATION, f"{preset_name}.json")
+            if preset_path and os.path.exists(preset_path):
+                try:
+                    with open(preset_path, "r", encoding="utf-8") as f:
+                        config = json.load(f)
+                except (json.JSONDecodeError, IOError) as e:
+                    log.error(f"Failed to load preset '{preset_name}': {e}")
+                    return {
+                        "success": False,
+                        "error": f"Erro ao carregar preset '{preset_name}'",
+                    }
+            else:
+                return {
+                    "success": False,
+                    "error": f"Preset '{preset_name}' não existe",
+                }
+    else:
+        config = None
 
     doc_id = generate_random_uuid()[:9]
     doc_path = f"{API_TEMP_PATH}/{doc_id}"

@@ -1,0 +1,9 @@
+{
+  "engine": "pytesseract",
+  "lang": ["por"],
+  "outputs": ["pdf", "csv", "txt"],
+  "engineMode": 3,
+  "segmentMode": 11,
+  "thresholdMethod": 0,
+  "compress": true
+}

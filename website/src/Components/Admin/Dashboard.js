@@ -3,6 +3,7 @@ import {Link, useNavigate} from "react-router";
 import axios from "axios";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
+import { useTranslation } from 'react-i18next';
 
 import Footer  from 'Components/Footer/Footer';
 // const VersionsMenu = loadComponent('Form', 'VersionsMenu');
@@ -18,6 +19,7 @@ const UPDATE_TIME = 30;  // period of fetching system info, in seconds
 
 const Dashboard = (props) => {
     const navigate = useNavigate();
+    const { t } = useTranslation();
 
     const [freeSpace, setFreeSpace] = useState("");
     const [freeSpacePercent, setFreeSpacePercent] = useState("");
@@ -66,7 +68,7 @@ const Dashboard = (props) => {
                         flexDirection: 'row',
                         alignItems: "center",
                     }}>
-                        <span>Armazenamento livre: {freeSpace} ({freeSpacePercent}%)</span>
+                        <span>{t("admin.free_storage")}: {freeSpace} ({freeSpacePercent}%)</span>
                     </Box>
 
                     <Button
@@ -77,7 +79,7 @@ const Dashboard = (props) => {
                         }}
                         className="menuButton"
                     >
-                        <span>Sair</span>
+                        <span>{t("logout")}</span>
                     </Button>
             </Box>
 
@@ -94,7 +96,7 @@ const Dashboard = (props) => {
                     className="adminMenuButton"
                     onClick={() => navigate('/admin/storage')}
                 >
-                    Gerir Armazenamento
+                    {t("admin.manage_storage")}
                 </Button>
 
                 <Button
@@ -102,7 +104,7 @@ const Dashboard = (props) => {
                     className="adminMenuButton"
                     onClick={() => navigate('/admin/config')}
                 >
-                    Configurar Predefinições OCR
+                    {t("admin.configure_ocr_defaults")}
                 </Button>
 
                 <Link to="/admin/flower/" target="_blank" rel="noreferrer">
@@ -111,7 +113,7 @@ const Dashboard = (props) => {
                         className="adminMenuButton"
                         sx={{width: '100%'}}
                     >
-                        Ver Workers e Processos
+                        {t("admin.view_workers_processes")}
                     </Button>
                 </Link>
             </Box>

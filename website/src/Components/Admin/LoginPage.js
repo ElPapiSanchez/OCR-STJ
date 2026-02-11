@@ -1,6 +1,7 @@
 import React, {useRef, useState} from 'react';
 import axios from 'axios';
 import {useLocation, useNavigate} from "react-router";
+import { useTranslation } from 'react-i18next';
 
 import Notification from 'Components/Notifications/Notification';
 
@@ -9,6 +10,7 @@ const API_URL = `${window.location.protocol}//${window.location.host}/${process.
 const LoginPage = ({ isAuthenticated = false, setLoggedIn = null }) => {
     const navigate = useNavigate();
     const location = useLocation();
+    const { t } = useTranslation();
 
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -26,7 +28,7 @@ const LoginPage = ({ isAuthenticated = false, setLoggedIn = null }) => {
             .catch((error) => {
                 console.log(error);
                 if (error.status === 400) {
-                    errorNotif.current.openNotif("Email ou password incorretos");
+                    errorNotif.current.openNotif(t("admin.email_password_incorrect"));
                 } else {
                     errorNotif.current.openNotif(error.message);
                 }
@@ -43,10 +45,10 @@ const LoginPage = ({ isAuthenticated = false, setLoggedIn = null }) => {
         <div style={{ marginLeft: "2%" }}>
             <Notification message={""} severity={"error"} ref={errorNotif}/>
 
-            <h1>OCR Admin Login</h1>
+            <h1>{t("admin.login_title")}</h1>
             <form>
                 <div>
-                    <label>Email: </label>
+                    <label>{t("email")}: </label>
                     <input
                         type="text"
                         value={email}
@@ -54,14 +56,14 @@ const LoginPage = ({ isAuthenticated = false, setLoggedIn = null }) => {
                     />
                 </div>
                 <div>
-                    <label>Password: </label>
+                    <label>{t("password")}: </label>
                     <input
                         type="password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                     />
                 </div>
-                <button type="button" onClick={logInUser}>Submit</button>
+                <button type="button" onClick={logInUser}>{t("submit")}</button>
             </form>
         </div>
     );

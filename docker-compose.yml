@@ -46,13 +46,19 @@ services:
       C_FORCE_ROOT: true
       PYTHONUNBUFFERED: true
       PYTHONDONTWRITEBYTECODE : true
-    command: celery -A celery_app.celery worker --beat --scheduler redbeat.RedBeatScheduler --autoscale=16,8 --max-tasks-per-child=1 --loglevel=debug --without-gossip --without-mingle -Ofair -E --hostname=worker1@%h -P prefork
+    command: celery -A celery_app.celery worker --beat --scheduler redbeat.RedBeatScheduler --autoscale=8,4 --max-tasks-per-child=1 --loglevel=debug --without-gossip --without-mingle -Ofair -E --hostname=worker1@%h -P prefork
     healthcheck:
         test: celery inspect ping -d worker1@$$HOSTNAME
         interval: 10s
         timeout: 10s
         retries: 3
         start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 8G  # Increased to 8GB for large TIFF compression (was 4G)
+        reservations:
+          memory: 2G  # Reserve at least 2GB RAM (increased from 1G)
     volumes:
       - files_data:/app/_files
       - configs_data:/app/_configs

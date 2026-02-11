@@ -152,7 +152,7 @@ class FolderRow extends React.Component {
                         <IconButton className="actionButton">
                             <OcrIcon />
                         </IconButton>
-                        &nbsp;Fazer OCR
+                        &nbsp;{this.props.t("run ocr")}
                     </MenuItem>
                 </span></Tooltip>
 
@@ -168,7 +168,7 @@ class FolderRow extends React.Component {
                     >
                         {usingCustomConfig ? <SettingsSuggestIcon /> : <SettingsIcon />}
                     </IconButton>
-                    &nbsp;{usingCustomConfig ? "Editar Configuração" : "Configurar OCR"}
+                    &nbsp;{usingCustomConfig ? this.props.t("alter existing config") : this.props.t("config ocr")}
                 </MenuItem>
 
                 <MenuItem
@@ -177,7 +177,7 @@ class FolderRow extends React.Component {
                     <IconButton className="negActionButton">
                         <DeleteForeverIcon />
                     </IconButton>
-                    &nbsp;Apagar
+                    &nbsp;{this.props.t("delete")}
                 </MenuItem>
             </Menu>
 
@@ -187,7 +187,7 @@ class FolderRow extends React.Component {
             >
                 <TableCell className="explorerCell optionsCell">
                     <IconButton
-                        aria-label={"Opções para " + this.props.name}
+                        aria-label={this.props.t("details") + " " + this.props.name}
                         onClick={(e) => this.handleOptionsClick(e)}
                     >
                         <MoreVertIcon />

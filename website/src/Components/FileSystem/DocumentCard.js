@@ -121,12 +121,13 @@ class DocumentCard extends React.Component {
         const badges = [];
 
         // Priority badges (only show one at a time, in order of priority)
-        // Show "Preparing" badge when stored is a number (progress) or status is "preparing"
-        if (stored !== true && stored !== false && stored !== "stuck") {
+        // Show "Preparing" or "Uploading" badge with progress when stored is a number
+        if (typeof stored === "number") {
+            const isUploading = status?.stage === "uploading";
             badges.push(
-                <Box key="preparing" className="status-badge warning" sx={{ position: 'absolute', top: 'var(--spacing-sm)', left: 'var(--spacing-sm)' }}>
-                    <CircularProgress size={12} sx={{ mr: '4px' }} />
-                    {this.props.t("preparing stage")}
+                <Box key={isUploading ? "uploading" : "preparing"} className="status-badge warning" sx={{ position: 'absolute', top: 'var(--spacing-sm)', left: 'var(--spacing-sm)' }}>
+                    <CircularProgress size={12} sx={{ mr: '4px' }} variant="determinate" value={stored} />
+                    {isUploading ? this.props.t("uploading stage") : this.props.t("preparing stage")} ({Math.round(stored)}%)
                 </Box>
             );
             return badges;

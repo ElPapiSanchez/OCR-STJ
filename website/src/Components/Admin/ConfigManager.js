@@ -1,6 +1,7 @@
 import React, {useCallback, useEffect, useRef, useState} from "react";
 import axios from "axios";
 import { useNavigate } from "react-router";
+import { useTranslation } from 'react-i18next';
 
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -18,8 +19,6 @@ import Tooltip from "@mui/material/Tooltip";
 import CheckRoundedIcon from "@mui/icons-material/CheckRounded";
 import DeleteForeverIcon from "@mui/icons-material/DeleteForever";
 import EditIcon from "@mui/icons-material/Edit";
-
-import { withTranslation } from "react-i18next";
 
 import {
     engineList,
@@ -51,6 +50,7 @@ const _emptydict = {};
 
 const ConfigManager = (props) => {
     const navigate = useNavigate();
+    const { t } = useTranslation();
 
     const [defaultConfig, setDefaultConfig] = useState(_emptydict);
     const [existingConfigNames, setExistingConfigNames] = useState(_emptylist);
@@ -253,7 +253,7 @@ const ConfigManager = (props) => {
     function changeDpi(value) {
         value = value.trim();
         if (!(/^[1-9][0-9]*$/.test(value))) {
-            errorNotifRef.current.openNotif("O valor de DPI deve ser um número inteiro!");
+            errorNotifRef.current.openNotif(t("admin.dpi_integer_error"));
         }
         setDpiVal(value);
         setUncommittedChanges(true);
@@ -348,7 +348,7 @@ const ConfigManager = (props) => {
             })
             .then(response => {
                 if (response.status !== 200) {
-                    throw new Error("Não foi possível concluir o pedido.");
+                    throw new Error(t("admin.request_failed"));
                 }
                 if (response.data["success"]) {
                     successNotifRef.current.openNotif(response.data["message"]);
@@ -379,7 +379,7 @@ const ConfigManager = (props) => {
             })
             .then(response => {
                 if (response.status !== 200) {
-                    throw new Error(response.data["message"] || "Não foi possível concluir o pedido.");
+                    throw new Error(response.data["message"] || t("admin.request_failed"));
                 }
                 if (response.data["success"]) {
                     successNotifRef.current.openNotif(response.data["message"]);
@@ -400,14 +400,14 @@ const ConfigManager = (props) => {
     function openSaveConfigPopup(e) {
         e.stopPropagation();
         setConfirmPopupOpened(true);
-        setConfirmPopupMessage(`Guardar a configuração "${configName}"`);
+        setConfirmPopupMessage(`${t("admin.save_configuration")} "${configName}"`);
         setConfirmPopupSubmitCallback(() => saveConfig);  // set value as function saveConfig
     }
 
     function openDeleteConfigPopup(e) {
         e.stopPropagation();
         setConfirmPopupOpened(true);
-        setConfirmPopupMessage(`Tem a certeza que quer apagar a configuração "${configName}"?`);
+        setConfirmPopupMessage(`${t("admin.confirm_delete_configuration")} "${configName}"?`);
         setConfirmPopupSubmitCallback(() => deleteConfig);  // set value as function deleteConfig
     }
 
@@ -487,7 +487,7 @@ const ConfigManager = (props) => {
                 paddingTop: '1rem',
             }}>
                 <Typography variant="h4" component="h2" sx={{flexGrow: "1", textAlign: "center"}}>
-                    Gerir Configurações de OCR
+                    {t("admin.manage_ocr_configurations")}
                 </Typography>
 
                 <Button
@@ -499,7 +499,7 @@ const ConfigManager = (props) => {
                     className="menuButton"
                     sx={{marginLeft: "auto"}}
                 >
-                    <span>Sair</span>
+                    <span>{t("logout")}</span>
                 </Button>
             </Box>
 
@@ -515,13 +515,19 @@ const ConfigManager = (props) => {
                             className="toolbarTitle"
                             style={{fontSize: "1.5rem", display: "flex", flexDirection: "row"}}
                         >
-                            A alterar configuração
+                            {t("admin.editing_configuration")}
                             &nbsp;
                             <Autocomplete
                                 error={!validConfigName}
                                 value={configName}
                                 options={existingConfigNames}
-                                getOptionLabel={(option) => option}
+                                getOptionLabel={(option) => {
+                                    // Try to get translation for presets, fallback to raw name
+                                    const translationKey = `presets.${option}`;
+                                    const translated = t(translationKey);
+                                    // If translation key not found, i18next returns the key itself
+                                    return translated !== translationKey ? translated : option;
+                                }}
                                 autoSelect
                                 onChange={(e, newValue) => changeConfigName(newValue, true)}
                                 renderInput={(params) => (
@@ -529,7 +535,7 @@ const ConfigManager = (props) => {
                                         {...params}
                                         required
                                         error={!validConfigName}
-                                        placeholder="nome"
+                                        placeholder={t("name")}
                                         variant="outlined"
                                         size="small"
                                         sx={{
@@ -552,7 +558,7 @@ const ConfigManager = (props) => {
                             {configName
                                 ? <Tooltip
                                     placement="right"
-                                    title="A configuração default não pode ser apagada"
+                                    title={t("admin.default_config_cannot_delete")}
                                     disableFocusListener={configName !== "default"}
                                     disableHoverListener={configName !== "default"}
                                     disableTouchListener={configName !== "default"}
@@ -560,7 +566,7 @@ const ConfigManager = (props) => {
                                     <TooltipIcon
                                         disabled={configName === "default"}
                                         className="negActionButton"
-                                        message="Apagar"
+                                        message={t("delete")}
                                         clickFunction={(e) => openDeleteConfigPopup(e)}
                                         icon={<DeleteForeverIcon />}
                                     />
@@ -572,11 +578,11 @@ const ConfigManager = (props) => {
                             className="toolbarTitle"
                             style={{fontSize: "1.5rem"}}
                         >
-                            A criar nova configuração:
+                            {t("admin.creating_new_configuration")}
                             &nbsp;
                             <TextField
                                 required
-                                placeholder="nome"
+                                placeholder={t("name")}
                                 error={!validConfigName}
                                 value={configName}
                                 onChange={(e) => changeConfigName(e.target.value)}
@@ -601,8 +607,8 @@ const ConfigManager = (props) => {
                         onClick={() => toggleEditingExistingConfig()}
                     >
                         {isEditingExistingConfig
-                            ? this.props.t("finish")
-                            : this.props.t("alter existing config")
+                            ? t("finish")
+                            : t("alter existing config")
                         }
                     </Button>
 
@@ -612,12 +618,12 @@ const ConfigManager = (props) => {
                         className="menuFunctionButton"
                         onClick={() => resetParameters()}
                     >
-                        Limpar Tudo
+                        {t("clear all")}
                     </Button>
 
                     <Tooltip
                         placement="bottom"
-                        title="A configuração default deve definir os parâmetros obrigatórios"
+                        title={t("admin.default_config_must_define")}
                         disableFocusListener={configName !== "default" || (validConfig && uncommittedChanges)}
                         disableHoverListener={configName !== "default" || (validConfig && uncommittedChanges)}
                         disableTouchListener={configName !== "default" || (validConfig && uncommittedChanges)}
@@ -630,7 +636,7 @@ const ConfigManager = (props) => {
                             startIcon={<CheckRoundedIcon />}
                             onClick={(e) => openSaveConfigPopup(e)}
                         >
-                            Confirmar
+                            {t("confirm")}
                         </Button>
                 </span></Tooltip>
                 </Box>
@@ -651,12 +657,12 @@ const ConfigManager = (props) => {
                     display: 'flex',
                     flexDirection: 'column',
                 }}>
-                    <CheckboxList title={"Formatos de resultado"}
+                    <CheckboxList title={t("output formats")}
                                   options={outputOptions}
                                   checked={outputs}
                                   onChangeCallback={(checked) => setOutputList(checked)}
                                   required={configName === "default"}
-                                  errorText="Deve selecionar pelo menos um formato de resultado"
+                                  errorText={t("admin.select_at_least_one_output")}
                     />
                 </Box>
 
@@ -664,14 +670,14 @@ const ConfigManager = (props) => {
                     display: 'flex',
                     flexDirection: 'column',
                 }}>
-                    <CheckboxList title={"Língua"}
+                    <CheckboxList title={t("language")}
                                   options={langOptions}
                                   checked={lang}
                                   onChangeCallback={(checked) => setLangList(checked)}
                                   showOrder
-                                  helperText="Para melhores resultados, selecione por ordem de relevância"
+                                  helperText={t("language hint")}
                                   required={configName === "default"}
-                                  errorText="Deve selecionar pelo menos uma língua"
+                                  errorText={t("admin.select_at_least_one_language")}
                     />
                 </Box>
 
@@ -681,7 +687,7 @@ const ConfigManager = (props) => {
                     width: '30%',
                 }}>
                     <TextField
-                        label="DPI (Dots Per Inch)"
+                        label={t("dpi")}
                         slotProps={{htmlInput: { inputMode: "numeric", pattern: "[1-9][0-9]*" }}}
                         error={!validDpiVal}
                         value={dpiVal}
@@ -699,7 +705,7 @@ const ConfigManager = (props) => {
                         error={!validEngine || (configName === "default" && engine === "")}
                         className="simpleDropdown borderTop"
                     >
-                        <FormLabel id="label-ocr-engine-select">Motor de OCR</FormLabel>
+                        <FormLabel id="label-ocr-engine-select">{t("ocr engine")}</FormLabel>
                         <RadioGroup
                             aria-labelledby="label-ocr-engine-select"
                             value={engine}
@@ -722,7 +728,7 @@ const ConfigManager = (props) => {
                         error={!validEngineMode || (configName === "default" && engineMode === -1)}
                         className="simpleDropdown borderTop"
                     >
-                        <FormLabel id="label-engine-type-select">Modo do motor</FormLabel>
+                        <FormLabel id="label-engine-type-select">{t("engine mode")}</FormLabel>
                         <RadioGroup
                             aria-labelledby="label-engine-type-select"
                             value={engineMode}
@@ -740,7 +746,7 @@ const ConfigManager = (props) => {
                         error={!validSegmentMode || (configName === "default" && segmentMode === -1)}
                         className="simpleDropdown borderTop"
                     >
-                        <FormLabel id="label-segmentation-select">Segmentação</FormLabel>
+                        <FormLabel id="label-segmentation-select">{t("segmentation")}</FormLabel>
                         <RadioGroup
                             aria-labelledby="label-segmentation-select"
                             value={segmentMode}
@@ -758,7 +764,7 @@ const ConfigManager = (props) => {
                         error={!validThresholdMethod || (configName === "default" && thresholdMethod === -1)}
                         className="simpleDropdown borderTop"
                     >
-                        <FormLabel id="label-thresholding-select">Thresholding</FormLabel>
+                        <FormLabel id="label-thresholding-select">{t("thresholding")}</FormLabel>
                         <RadioGroup
                             aria-labelledby="label-thresholding-select"
                             value={thresholdMethod}
@@ -772,7 +778,7 @@ const ConfigManager = (props) => {
                     </FormControl>
 
                     <TextField
-                        label="Parâmetros adicionais"
+                        label={t("additional parameters")}
                         value={otherParams}
                         onChange={(e) => changeAdditionalParams(e.target.value)}
                         variant='outlined'

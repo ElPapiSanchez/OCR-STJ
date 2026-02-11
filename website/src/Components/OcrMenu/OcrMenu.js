@@ -17,6 +17,7 @@ import FormLabel from "@mui/material/FormLabel";
 import RadioGroup from "@mui/material/RadioGroup";
 import Radio from "@mui/material/Radio";
 import FormControl from "@mui/material/FormControl";
+import Switch from "@mui/material/Switch";
 
 import {
     defaultConfig,
@@ -52,6 +53,7 @@ class OcrMenu extends React.Component {
         // outputs[outputs.length - 1].disabled = !this.props.isSinglePage && !this.props.isFolder;
         this.state = {
             ...emptyConfig,
+            compress: true,  // Ensure compress is always initialized
             presetsList: [],
             presetName: "",
             defaultConfig: defaultConfig,
@@ -103,6 +105,10 @@ class OcrMenu extends React.Component {
                     const configToApply = savedConfig || this.props.customConfig;
                     const usingDefault = !configToApply || configToApply === "default";
                     const initialConfig = Object.assign({...data}, configToApply);
+                    // Ensure compress is always set (default to true if missing)
+                    if (initialConfig.compress === undefined || initialConfig.compress === null) {
+                        initialConfig.compress = true;
+                    }
                     this.setState({...initialConfig, defaultConfig: data, loaded: true, usingDefault: usingDefault});
                 } else {
                     this.setState({defaultConfig: data});
@@ -115,6 +121,10 @@ class OcrMenu extends React.Component {
                     const configToApply = savedConfig || this.props.customConfig;
                     const usingDefault = !configToApply || configToApply === "default";
                     const initialConfig = Object.assign({...defaultConfig}, configToApply);
+                    // Ensure compress is always set (default to true if missing)
+                    if (initialConfig.compress === undefined || initialConfig.compress === null) {
+                        initialConfig.compress = true;
+                    }
                     this.setState({...initialConfig, loaded: true, usingDefault: usingDefault});
                 }
             });
@@ -223,6 +233,7 @@ class OcrMenu extends React.Component {
             engineMode: this.state.engineMode,
             segmentMode: this.state.segmentMode,
             thresholdMethod: this.state.thresholdMethod,
+            compress: this.state.compress !== undefined ? this.state.compress : true,
         }
         if (this.state.dpiVal !== null && this.state.dpiVal !== "") {
             config.dpi = this.state.dpiVal;
@@ -277,6 +288,10 @@ class OcrMenu extends React.Component {
 
     changeSegmentationMode(value) {
         this.setState({ segmentMode: Number(value), usingDefault: false, uncommittedChanges: true });
+    }
+
+    changeCompress(value) {
+        this.setState({ compress: value, usingDefault: false, uncommittedChanges: true });
     }
 
     changeThresholdingMethod(value) {
@@ -368,7 +383,13 @@ class OcrMenu extends React.Component {
                     <Autocomplete
                         value={this.state.presetName}
                         options={this.state.presetsList}
-                        getOptionLabel={(option) => option}
+                        getOptionLabel={(option) => {
+                            // Try to get translation for presets, fallback to raw name
+                            const translationKey = `presets.${option}`;
+                            const translated = this.props.t(translationKey);
+                            // If translation key not found, i18next returns the key itself
+                            return translated !== translationKey ? translated : option;
+                        }}
                         autoHighlight
                         onChange={(e, newValue) => this.selectPreset(newValue)}
                         renderInput={(params) => (
@@ -561,6 +582,22 @@ class OcrMenu extends React.Component {
                                size="small"
                                slotProps={{inputLabel: {sx: {top: "0.5rem"}}}}
                     />
+
+                    <FormControl className="simpleDropdown borderTop" sx={{ paddingTop: '1rem' }}>
+                        <FormControlLabel
+                            control={
+                                <Switch
+                                    checked={this.state.compress !== undefined ? this.state.compress : true}
+                                    onChange={(e) => this.changeCompress(e.target.checked)}
+                                    color="primary"
+                                />
+                            }
+                            label={this.props.t("compress pdf")}
+                        />
+                        <Typography variant="caption" color="text.secondary" sx={{ ml: 2, mt: 0.5 }}>
+                            {this.props.t("compress pdf description")}
+                        </Typography>
+                    </FormControl>
                 </Box>
 
                 {/*

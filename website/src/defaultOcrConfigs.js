@@ -71,6 +71,7 @@ export const defaultConfig = {
     engineMode: defaultEngineMode,
     segmentMode: defaultSegmentationMode,
     thresholdMethod: defaultThresholding,
+    compress: true,
 };
 
 export const emptyConfig = {
@@ -82,4 +83,5 @@ export const emptyConfig = {
     thresholdMethod: -1,
     dpiVal: null,
     otherParams: null,
+    compress: true,
 };

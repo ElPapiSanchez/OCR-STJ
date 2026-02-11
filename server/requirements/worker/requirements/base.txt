@@ -12,7 +12,8 @@ hdbscan==0.8.40
 reportlab==4.4.3
 pypdfium2==5.0.0
 requests==2.*
-#numpy<2
+numpy>=2.0.0,<2.3.0
+PyMuPDF>=1.23.0
 #memory-profiler
 tesserocr==2.8.0
 python-dotenv==1.1.1

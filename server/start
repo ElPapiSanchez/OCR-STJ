@@ -3,6 +3,21 @@
 set -o errexit
 set -o pipefail
 
+# Copy preset config files to _configs volume if they don't exist
+echo "Checking for OCR preset configuration files..."
+mkdir -p _configs
+
+for preset in config_files/*.json; do
+    filename=$(basename "$preset")
+    if [ ! -f "_configs/$filename" ]; then
+        echo "  Copying $filename to _configs/"
+        cp "$preset" "_configs/$filename"
+    else
+        echo "  $filename already exists, skipping"
+    fi
+done
+
+echo "OCR preset configuration files ready."
 
 if [ "$FLASK_ENV" == "development" ]; then
         flask run --host=0.0.0.0 --port=5001

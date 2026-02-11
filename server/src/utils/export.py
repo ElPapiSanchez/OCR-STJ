@@ -3,6 +3,7 @@ import csv
 import hashlib
 import io
 import json
+import logging
 import os
 import re
 import shutil
@@ -30,8 +31,13 @@ from src.utils.file import OUTPUTS_PATH
 from src.utils.file import PRIVATE_PATH
 from src.utils.file import size_to_units
 from src.utils.file import update_json_file
+from src.utils.image_compression import mrc_pdf_from_path
 
-OUT_DEFAULT_DPI = 150
+log = logging.getLogger(__name__)
+
+# Reduced from 150 to 100 to prevent OOM (Out of Memory) during compression
+# Lower DPI = smaller images in memory = less RAM usage
+OUT_DEFAULT_DPI = 100
 
 
 ####################################################
@@ -48,6 +54,7 @@ def export_file(
     keep_temp=False,
     already_temp=False,
     get_csv=False,
+    compress=True,
 ):
     """
     Direct to the correct function based on the filetype.
@@ -60,6 +67,7 @@ def export_file(
     :param force_recreate: whether the file should be recreated, if it already exists
     :param simple: for a PDF, whether it should be simple, rather than with index
     :param get_csv: for a PDF, whether a CSV should be generated additionally
+    :param compress: for a PDF, whether to apply MRC compression
     """
     # Calculate outputs_path if not provided (for backward compatibility)
     if outputs_path is None:
@@ -73,6 +81,7 @@ def export_file(
 
     if simple or get_csv or keep_temp or already_temp:
         # currently, keeping temp is only used for PDF
+        log.info(f"export_file calling export_pdf with compress={compress} (type: {type(compress)})")
         return export_pdf(
             files_path,
             outputs_path=outputs_path,
@@ -82,6 +91,7 @@ def export_file(
             keep_temp=keep_temp,
             already_temp=already_temp,
             get_csv=get_csv,
+            compress=compress,
         )
 
     func = globals()[f"export_{filetype}"]
@@ -99,6 +109,11 @@ def export_file(
     # Add delimiter if specified (for txt exports)
     if delimiter:
         kwargs['delimiter'] = delimiter
+    
+    # Add compress parameter for PDF exports
+    if filetype == 'pdf':
+        kwargs['compress'] = compress
+        log.info(f"export_file adding compress to kwargs: {compress} (type: {type(compress)})")
 
     return func(files_path, **kwargs)
 
@@ -308,6 +323,7 @@ def export_pdf(
     keep_temp=False,
     already_temp=False,
     get_csv=False,
+    compress=True,
 ):
     """
     Export the file as a .pdf file.
@@ -320,7 +336,10 @@ def export_pdf(
     :param keep_temp: keep temporary images after processing
     :param already_temp: temporary images already exist
     :param get_csv: also generate CSV index
+    :param compress: apply MRC compression to reduce PDF file size
     """
+    log.info(f"export_pdf called with compress={compress} (type: {type(compress)}), simple={simple}, files_path={files_path}")
+    
     # Calculate outputs_path if not provided
     if outputs_path is None:
         relative_path = files_path.replace(FILES_PATH, "").strip("/")
@@ -560,6 +579,110 @@ def export_pdf(
                 pdf.showPage()
 
         pdf.save()
+        
+        # Apply MRC compression to reduce PDF file size (if enabled)
+        if compress:
+            log.info(f"PDF compression is enabled, starting compression for: {target}")
+            try:
+                print("\n" + "="*70)
+                print("📦 STARTING PDF COMPRESSION")
+                print("="*70)
+                
+                update_json_file(
+                    data_file,
+                    {
+                        "status": {
+                            "stage": "compressing",
+                            "message": "A comprimir PDF - A iniciar...",
+                            "progress": 0,
+                        }
+                    },
+                )
+                
+                original_size = os.path.getsize(target)
+                print(f"📄 Input file: {target}")
+                print(f"📊 Original size: {size_to_units(original_size)} ({original_size:,} bytes)")
+                print(f"🎯 Target DPI: {OUT_DEFAULT_DPI}")
+                print(f"🔧 Compression settings:")
+                print(f"   - Background format: JPEG (quality: 40)")
+                print(f"   - Foreground format: JPEG (quality: 80)")
+                print(f"   - Mask method: CV (Computer Vision)")
+                print(f"\n⏳ Applying MRC (Mixed Raster Content) compression...")
+                
+                log.info(f"Starting MRC compression for: {target}")
+                
+                # Define progress callback to update browser status
+                def compression_progress_callback(current_page, total_pages, stage):
+                    progress_percent = (current_page / total_pages * 100) if total_pages > 0 else 0
+                    
+                    if stage == "starting":
+                        message = "A comprimir PDF - A iniciar..."
+                    elif stage == "processing":
+                        message = f"A comprimir PDF - Página {current_page}/{total_pages}"
+                    elif stage == "finalizing":
+                        message = "A comprimir PDF - A finalizar..."
+                    elif stage == "complete":
+                        message = "Compressão concluída"
+                    else:
+                        message = "A comprimir PDF"
+                    
+                    update_json_file(
+                        data_file,
+                        {
+                            "status": {
+                                "stage": "compressing",
+                                "message": message,
+                                "progress": progress_percent,
+                            }
+                        },
+                    )
+                
+                # Compress the PDF using MRC (Mixed Raster Content)
+                import time
+                start_time = time.time()
+                
+                compressed_pdf_bytes = mrc_pdf_from_path(
+                    input_path=target,
+                    target_dpi=OUT_DEFAULT_DPI,
+                    render_dpi=600,  # Original value - may cause OOM on large TIFFs
+                    output_pdf_path=target,  # Overwrite the original
+                    bg_format="JPEG",
+                    fg_format="JPEG",
+                    bg_quality=40,  # Background quality (lower = smaller size)
+                    fg_quality=80,  # Foreground quality (higher for text clarity)
+                    mask_method="cv",  # Use CV method for better text detection
+                    progress_callback=compression_progress_callback,
+                )
+                
+                compression_time = time.time() - start_time
+                
+                compressed_size = os.path.getsize(target)
+                compression_ratio = (1 - compressed_size / original_size) * 100 if original_size > 0 else 0
+                
+                print(f"\n✅ COMPRESSION COMPLETE!")
+                print(f"Render_dpi: 600")
+                print(f"📊 Compressed size: {size_to_units(compressed_size)} ({compressed_size:,} bytes)")
+                print(f"💾 Space saved: {size_to_units(original_size - compressed_size)} ({compression_ratio:.1f}% reduction)")
+                print(f"⏱️  Compression time: {compression_time:.2f} seconds")
+                print(f"💨 Processing speed: {(original_size / compression_time / 1024 / 1024):.2f} MB/s")
+                print("="*70 + "\n")
+                
+                log.info(
+                    f"PDF compressed successfully: {target} "
+                    f"({size_to_units(original_size)} → {size_to_units(compressed_size)}, "
+                    f"{compression_ratio:.1f}% reduction in {compression_time:.2f}s)"
+                )
+            except Exception as e:
+                print(f"\n❌ COMPRESSION FAILED: {str(e)}")
+                print(f"⚠️  Using uncompressed version")
+                print("="*70 + "\n")
+                log.warning(f"Failed to compress PDF: {e}. Using uncompressed version.")
+        else:
+            log.info(f"PDF compression is disabled, skipping compression for: {target}")
+            print(f"\n⏭️  SKIPPING PDF COMPRESSION (disabled in configuration)")
+            print(f"📄 File: {target}")
+            print(f"📊 Size: {size_to_units(os.path.getsize(target))}\n")
+        
         return target
 
 

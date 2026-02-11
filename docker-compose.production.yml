@@ -55,6 +55,12 @@ services:
             timeout: 10s
             retries: 3
             start_period: 10s
+        deploy:
+            resources:
+                limits:
+                    memory: 8G  # Allow up to 8GB RAM for large TIFF compression
+                reservations:
+                    memory: 2G  # Reserve at least 2GB RAM
         volumes:
             - "${HOME}/Desktop/ocr-storage/files:/app/_files"
             - "${HOME}/Desktop/ocr-storage/configs:/app/_configs"

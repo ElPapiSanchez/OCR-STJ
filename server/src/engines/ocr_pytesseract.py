@@ -114,6 +114,7 @@ def get_structure(
     lang: str,
     config: str = "",
     doc_path: str = "",  # not used, added for consistent parameter names with tesserOCR
+    outputs_path: str = "",  # not used, added for consistent parameter names with tesserOCR
     output_types: list[str] | None = None,
     segment_box=None,
     single_page: bool = False,

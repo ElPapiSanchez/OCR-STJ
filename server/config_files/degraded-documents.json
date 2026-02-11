@@ -1,0 +1,9 @@
+{
+  "engine": "tesserocr",
+  "lang": ["por"],
+  "outputs": ["pdf", "txt"],
+  "engineMode": 2,
+  "segmentMode": 1,
+  "thresholdMethod": 2,
+  "compress": true
+}

@@ -1,6 +1,7 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import axios from "axios";
 import { useNavigate } from "react-router";
+import { useTranslation } from 'react-i18next';
 
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
@@ -31,14 +32,14 @@ const ADMIN_HOME = (process.env.REACT_APP_BASENAME !== null && process.env.REACT
 const numberHoursRegex = /^[1-9][0-9]*$/;
 const dayRegex = /^([1-9]|0[1-9]|[1-2][0-9]|3[0-1])$/;
 
-const weekDaysOptions = [
-    { value: "mon", description: "Segunda-feira"},
-    { value: "tue", description: "Terça-feira"},
-    { value: "wed", description: "Quarta-feira"},
-    { value: "thu", description: "Quinta-feira"},
-    { value: "fri", description: "Sexta-feira"},
-    { value: "sat", description: "Sábado"},
-    { value: "sun", description: "Domingo"},
+const getWeekDaysOptions = (t) => [
+    { value: "mon", description: t("weekdays.monday")},
+    { value: "tue", description: t("weekdays.tuesday")},
+    { value: "wed", description: t("weekdays.wednesday")},
+    { value: "thu", description: t("weekdays.thursday")},
+    { value: "fri", description: t("weekdays.friday")},
+    { value: "sat", description: t("weekdays.saturday")},
+    { value: "sun", description: t("weekdays.sunday")},
 ]
 
 const sizeRegex = /(\d+(?:\.\d+)?) ([A-Za-z]+)/;  // match both e.g. "50 KB" and "50.00 KB"
@@ -51,12 +52,13 @@ const sizeMap = {
 
 const StorageManager = (props) => {
     const navigate = useNavigate();
+    const { t } = useTranslation();
 
     const [freeSpace, setFreeSpace] = useState("");
     const [freeSpacePercent, setFreeSpacePercent] = useState("");
     const [privateSpaces, setPrivateSpaces] = useState([]);
     const [apiFiles, setApiFiles] = useState([]);
-    const [lastCleanup, setLastCleanup] = useState("nunca");
+    const [lastCleanup, setLastCleanup] = useState(t("never"));
     const [maxPrivateSpaceAge, setMaxPrivateSpaceAge] = useState("1");
 
     const [refreshing, setRefreshing] = useState(true);
@@ -128,7 +130,7 @@ const StorageManager = (props) => {
             })
             .then(response => {
                 if (response.status !== 200) {
-                    throw new Error(response.data["message"] || "Não foi possível concluir o pedido.");
+                    throw new Error(response.data["message"] || t("admin.request_failed"));
                 }
                 if (!response.data["success"]) {
                     throw new Error(response.data["message"]);
@@ -154,7 +156,7 @@ const StorageManager = (props) => {
             })
             .then(response => {
                 if (response.status !== 200) {
-                    throw new Error(response.data["message"] || "Não foi possível concluir o pedido.");
+                    throw new Error(response.data["message"] || t("admin.request_failed"));
                 }
                 if (!response.data["success"]) {
                     throw new Error(response.data["message"]);
@@ -172,11 +174,11 @@ const StorageManager = (props) => {
     useEffect(() => {
         if (deleteSpaceId !== null) {
             setConfirmPopupOpened(true);
-            setConfirmPopupMessage(`Tem a certeza que quer apagar o espaço ${deleteSpaceId}?`);
+            setConfirmPopupMessage(`${t("admin.confirm_delete_space")} ${deleteSpaceId}?`);
             setConfirmPopupSubmitCallback(() => deletePrivateSpace);  // set value as function deletePrivateSpace
         } else if (deleteApiDocumentId !== null) {
             setConfirmPopupOpened(true);
-            setConfirmPopupMessage(`Tem a certeza que quer apagar o documento com ID ${deleteApiDocumentId}?`);
+            setConfirmPopupMessage(`${t("admin.confirm_delete_document")} ${deleteApiDocumentId}?`);
             setConfirmPopupSubmitCallback(() => deleteApiDocument);  // set value as function deleteApiDocument
         }
     }, [deleteSpaceId, deleteApiDocumentId, deletePrivateSpace, deleteApiDocument])
@@ -205,7 +207,7 @@ const StorageManager = (props) => {
     function handleEveryHoursChange(value) {
         value = value.trim();
         if (!(numberHoursRegex.test(value)) && value !== '') {
-            errorNotif.current.openNotif("O número de horas deve ser um valor inteiro positivo!");
+            errorNotif.current.openNotif(t("admin.hours_positive_integer"));
         }
         setEveryHours(value);
     }
@@ -213,7 +215,7 @@ const StorageManager = (props) => {
     function handleMonthDayChange(value) {
         value = value.trim();
         if (!(dayRegex.test(value)) && value !== "0" && value !== '') {
-            errorNotif.current.openNotif("O dia deve ser um número entre 1 e 31!");
+            errorNotif.current.openNotif(t("admin.day_between_1_31"));
         }
         setMonthDay(value);
     }
@@ -253,7 +255,7 @@ const StorageManager = (props) => {
     function openCleanupPopup(e) {
         e.stopPropagation();
         setConfirmPopupOpened(true);
-        setConfirmPopupMessage(`Tem a certeza que quer remover as sessões com mais de ${maxPrivateSpaceAge} dia(s)?`);
+        setConfirmPopupMessage(`${t("admin.confirm_remove_sessions")} ${maxPrivateSpaceAge} ${t("days")}?`);
         setConfirmPopupSubmitCallback(() => runPrivateSpaceCleanup);  // set value as function runPrivateSpaceCleanup
     }
 
@@ -269,7 +271,7 @@ const StorageManager = (props) => {
         axios.post(API_URL + "/admin/cleanup-private-spaces")
             .then(response => {
                 if (response.status !== 200) {
-                    throw new Error("Não foi possível concluir o pedido.");
+                    throw new Error(t("admin.request_failed"));
                 }
                 if (response.data["success"]) {
                     successNotif.current.openNotif(response.data["message"]);
@@ -316,7 +318,7 @@ const StorageManager = (props) => {
             })
             .then(response => {
                 if (response.status !== 200) {
-                    throw new Error("Não foi possível concluir o pedido.");
+                    throw new Error(t("admin.request_failed"));
                 }
                 if (response.data["success"]) {
                     successNotif.current.openNotif(response.data["message"]);
@@ -372,16 +374,16 @@ const StorageManager = (props) => {
                     flexBasis: '0',
                 }}>
                     <Box>
-                        <span>Armazenamento livre: {freeSpace} ({freeSpacePercent}%)</span>
+                        <span>{t("admin.free_storage")}: {freeSpace} ({freeSpacePercent}%)</span>
                     </Box>
 
                     <Box sx={{marginLeft: '1rem'}}>
-                        <span>Última limpeza: {lastCleanup}</span>
+                        <span>{t("admin.last_cleanup")}: {lastCleanup}</span>
                     </Box>
                 </Box>
 
                 <Typography variant="h4" component="h2">
-                    Gerir Armazenamento
+                    {t("admin.manage_storage")}
                 </Typography>
 
                 <Box sx={{
@@ -398,7 +400,7 @@ const StorageManager = (props) => {
                         }}
                         className="menuButton"
                     >
-                        <span>Sair</span>
+                        <span>{t("logout")}</span>
                     </Button>
                 </Box>
             </Box>
@@ -417,10 +419,10 @@ const StorageManager = (props) => {
                         startIcon={<RotateLeft />}
                         onClick={() => getStorageInfo()}
                     >
-                        Refresh
+                        {t("refresh")}
                     </Button>
                     <span style={{marginTop: "0.5rem"}}>
-                        Último update: {lastUpdate ? lastUpdate.toLocaleString("pt-PT") : "nunca"}
+                        {t("admin.last_update")}: {lastUpdate ? lastUpdate.toLocaleString("pt-PT") : t("never")}
                     </span>
                 </Box>
 
@@ -430,7 +432,7 @@ const StorageManager = (props) => {
                         onClick={(e) => openCleanupPopup(e)}
                         className="menuButton menuFunctionButton"
                     >
-                        Remover espaços privados com mais de {maxPrivateSpaceAge} dia(s)
+                        {t("admin.remove_private_spaces_older")} {maxPrivateSpaceAge} {t("days")}
                     </Button>
 
                     <Button
@@ -438,7 +440,7 @@ const StorageManager = (props) => {
                         onClick={(e) => openChangeMaxAgePopup(e)}
                         className="menuButton menuFunctionButton"
                     >
-                        Alterar idade máxima
+                        {t("admin.change_max_age")}
                     </Button>
                 </Box>
             </Box>
@@ -472,7 +474,7 @@ const StorageManager = (props) => {
                         width: "fit-content",
                         height: "fit-content",
                     }}>
-                        <span>Documentos de API</span>
+                        <span>{t("admin.api_documents")}</span>
                         {
                             apiFiles.map(([apiFile, info], index) => {
                                 return (
@@ -498,7 +500,7 @@ const StorageManager = (props) => {
                                             </span>
                                             <TooltipIcon
                                                 className="negActionButton"
-                                                message="Apagar"
+                                                message={t("delete")}
                                                 clickFunction={(e) => openDeleteApiDocumentPopup(e, apiFile)}
                                                 icon={<DeleteForeverIcon />}
                                             />
@@ -530,7 +532,7 @@ const StorageManager = (props) => {
                             width: "fit-content",
                             height: "fit-content",
                     }}>
-                        <span>Espaços Privados</span>
+                        <span>{t("admin.private_spaces")}</span>
                         {
                             privateSpaces.map(([privateSpace, info], index) => {
                                 return (
@@ -560,7 +562,7 @@ const StorageManager = (props) => {
                                             </span>
                                             <TooltipIcon
                                                 className="negActionButton"
-                                                message="Apagar"
+                                                message={t("delete")}
                                                 clickFunction={(e) => openDeleteSpacePopup(e, privateSpace)}
                                                 icon={<DeleteForeverIcon />}
                                             />
@@ -585,7 +587,7 @@ const StorageManager = (props) => {
                         justifyContent: 'space-between',
                     }}>
                         <Typography variant="h5" component="h2">
-                            Definir horário de limpeza automática
+                            {t("admin.set_cleanup_schedule")}
                         </Typography>
 
                         <Button
@@ -596,7 +598,7 @@ const StorageManager = (props) => {
                             startIcon={<CheckRoundedIcon />}
                             onClick={(e) => updateSchedule(e)}
                         >
-                            Confirmar
+                            {t("confirm")}
                         </Button>
                     </Box>
 
@@ -611,7 +613,7 @@ const StorageManager = (props) => {
                             flexDirection: 'column',
                         }}>
                             <FormControlLabel
-                                label="Por intervalo"
+                                label={t("admin.by_interval")}
                                 checked={scheduleType === "interval"}
                                 control={<Radio size="small"/>}
                                 onChange={() => handleScheduleTypeChange("interval")}
@@ -622,7 +624,7 @@ const StorageManager = (props) => {
                                 flexDirection: 'row',
                                 alignItems: 'center',
                             }}>
-                                <span>A cada </span>
+                                <span>{t("every")} </span>
                                 <TextField
                                     disabled={scheduleType !== "interval"}
                                     error={!(numberHoursRegex.test(everyHours))}
@@ -639,7 +641,7 @@ const StorageManager = (props) => {
                                         textAlign: "center",
                                     }}
                                 />
-                                <span> horas</span>
+                                <span> {t("hours")}</span>
                             </Box>
                         </Box>
 
@@ -648,7 +650,7 @@ const StorageManager = (props) => {
                             flexDirection: 'column',
                         }}>
                             <FormControlLabel
-                                label="Semanalmente"
+                                label={t("admin.weekly")}
                                 checked={scheduleType === "weekly"}
                                 control={<Radio size="small"/>}
                                 onChange={() => handleScheduleTypeChange("weekly")}
@@ -657,7 +659,7 @@ const StorageManager = (props) => {
                             <TimePicker
                                 disabled={scheduleType !== "weekly"}
                                 required={scheduleType === "weekly"}
-                                label="Hora"
+                                label={t("hour")}
                                 views={['hours', 'minutes']}
                                 ampm={false}
                                 value={weekTime}
@@ -717,12 +719,12 @@ const StorageManager = (props) => {
 
                             <CheckboxList
                                 disabled={scheduleType !== "weekly"}
-                                title="Dias da semana"
-                                options={weekDaysOptions}
+                                title={t("admin.week_days")}
+                                options={getWeekDaysOptions(t)}
                                 checked={weekDays}
                                 required={scheduleType === "weekly"}
                                 onChangeCallback={handleWeekDaysChange}
-                                errorText="Deve selecionar pelo menos um dia"
+                                errorText={t("admin.select_at_least_one_day")}
                             />
                         </Box>
 
@@ -731,7 +733,7 @@ const StorageManager = (props) => {
                             flexDirection: 'column',
                         }}>
                             <FormControlLabel
-                                label="Mensalmente"
+                                label={t("admin.monthly")}
                                 checked={scheduleType === "monthly"}
                                 control={<Radio size="small"/>}
                                 onChange={() => handleScheduleTypeChange("monthly")}
@@ -744,7 +746,7 @@ const StorageManager = (props) => {
                                 <TimePicker
                                     disabled={scheduleType !== "monthly"}
                                     required={scheduleType === "monthly"}
-                                    label="Hora"
+                                    label={t("hour")}
                                     views={['hours', 'minutes']}
                                     ampm={false}
                                     value={monthTime}
@@ -759,7 +761,7 @@ const StorageManager = (props) => {
                                     error={scheduleType === "monthly" && !(dayRegex.test(monthDay))}
                                     value={monthDay}
                                     onChange={(e) => handleMonthDayChange(e.target.value)}
-                                    label="Dia"
+                                    label={t("day")}
                                     size="small"
                                     variant="outlined"
                                     className="simpleInput"

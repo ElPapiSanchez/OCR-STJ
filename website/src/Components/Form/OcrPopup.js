@@ -7,8 +7,14 @@ import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import ClickAwayListener from "@mui/material/ClickAwayListener";
+import FormControl from '@mui/material/FormControl';
+import InputLabel from '@mui/material/InputLabel';
+import Select from '@mui/material/Select';
+import MenuItem from '@mui/material/MenuItem';
+import Tooltip from '@mui/material/Tooltip';
 
 import Notification from 'Components/Notifications/Notification';
+import i18next from 'i18next';
 
 const API_URL = `${window.location.protocol}//${window.location.host}/${process.env.REACT_APP_API_URL}`;
 const style = {
@@ -41,6 +47,9 @@ class OcrPopup extends React.Component {
             isFolder: false,
             alreadyOcr: false,
             customConfig: null,
+            
+            presetsList: [],
+            selectedPreset: "default",
         }
 
         this.successNot = React.createRef();
@@ -55,6 +64,31 @@ class OcrPopup extends React.Component {
 
         // handler to close menu on click outside box
         this.handleClickOutsideMenu = this.handleClickOutsideMenu.bind(this);
+        this.fetchPresetsList = this.fetchPresetsList.bind(this);
+        this.handlePresetChange = this.handlePresetChange.bind(this);
+    }
+    
+    componentDidMount() {
+        this.fetchPresetsList();
+    }
+    
+    fetchPresetsList() {
+        fetch(API_URL + '/presets-list')
+            .then(response => response.json())
+            .then(data => {
+                // Add 'default' to the beginning if not already present
+                const presets = ['default', ...data];
+                this.setState({ presetsList: presets });
+            })
+            .catch(err => {
+                console.error("Failed to fetch presets list:", err);
+                // Fallback to just default
+                this.setState({ presetsList: ['default'] });
+            });
+    }
+    
+    handlePresetChange(event) {
+        this.setState({ selectedPreset: event.target.value });
     }
 
     handleClickOutsideMenu() {
@@ -71,6 +105,7 @@ class OcrPopup extends React.Component {
             isFolder: ocrTargetIsFolder,
             alreadyOcr: alreadyOcr,
             customConfig: customConfig,
+            selectedPreset: "default", // Reset to default when opening
         });
     }
 
@@ -82,6 +117,7 @@ class OcrPopup extends React.Component {
             isFolder: false,
             alreadyOcr: false,
             customConfig: null,
+            selectedPreset: "default",
         }, callback);
     }
 
@@ -95,9 +131,15 @@ class OcrPopup extends React.Component {
             "multiple": this.state.isFolder,
             "_private": this.props._private
         }
+        
+        // Priority: customConfig > selectedPreset
         if (this.state.customConfig) {
             body["config"] = this.state.customConfig;
+        } else if (this.state.selectedPreset && this.state.selectedPreset !== "default") {
+            // Send preset name as string to backend
+            body["config"] = this.state.selectedPreset;
         }
+        // If selectedPreset is "default" or null, don't send config (use system default)
 
         fetch(API_URL + '/request-ocr', {
             method: 'POST',
@@ -121,11 +163,13 @@ class OcrPopup extends React.Component {
                 this.closeMenu(this.props.submitCallback);
             })
             .catch(err => {
-               this.errorNot.current.openNotif("Não foi possível realizar o pedido.")
+               this.errorNot.current.openNotif(i18next.t("admin.request_failed"))
             });
     }
 
     render() {
+        const hasCustomConfig = this.state.customConfig !== null;
+        
         return (
             <Box>
                 <Notification message={""} severity={"success"} ref={this.successNot}/>
@@ -138,17 +182,50 @@ class OcrPopup extends React.Component {
                         onClickAway={this.handleClickOutsideMenu}
                     >
                         <Box sx={style}>
-                            <Typography id="modal-modal-title" variant="h6" component="h2">
-                                Realizar OCR {this.state.isFolder ? 'da pasta' : 'do ficheiro'} <b>{this.state.filename}</b>
+                            <Typography id="modal-modal-title" variant="h6" component="h2" sx={{ mb: 2 }}>
+                                {i18next.t("run ocr")} {this.state.isFolder ? i18next.t('of folder') : i18next.t('of document')} <b>{this.state.filename}</b>
                             </Typography>
 
                             {this.state.alreadyOcr
-                                && <p style={{color: 'red'}}><b>Irá perder os resultados e alterações anteriores!</b></p>
+                                && <Typography sx={{color: 'red', mb: 2}}><b>{i18next.t("lose results")}</b></Typography>
                             }
+
+                            {hasCustomConfig && (
+                                <Typography sx={{color: 'info.main', mb: 2, fontSize: '0.9rem'}}>
+                                    {i18next.t("custom config")}
+                                </Typography>
+                            )}
+
+                            {!hasCustomConfig && (
+                                <FormControl fullWidth sx={{ mb: 3, minWidth: 300 }}>
+                                    <InputLabel id="preset-select-label">{i18next.t("select ocr preset")}</InputLabel>
+                                    <Select
+                                        labelId="preset-select-label"
+                                        id="preset-select"
+                                        value={this.state.selectedPreset}
+                                        label={i18next.t("select ocr preset")}
+                                        onChange={this.handlePresetChange}
+                                    >
+                                        {this.state.presetsList.map((preset) => (
+                                            <MenuItem key={preset} value={preset}>
+                                                <Tooltip 
+                                                    title={i18next.t(`presets.${preset}_desc`)} 
+                                                    placement="right"
+                                                    arrow
+                                                >
+                                                    <span style={{ width: '100%', display: 'block' }}>
+                                                        {i18next.t(`presets.${preset}`)}
+                                                    </span>
+                                                </Tooltip>
+                                            </MenuItem>
+                                        ))}
+                                    </Select>
+                                </FormControl>
+                            )}
 
                             <Box sx={{display: 'flex', flexDirection: 'row', alignItems: 'center'}}>
                                 <Button variant="contained" onClick={() => this.performOCR()}>
-                                    Começar
+                                    {i18next.t("begin")}
                                 </Button>
                             </Box>
 

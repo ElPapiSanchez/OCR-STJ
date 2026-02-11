@@ -178,7 +178,7 @@ def task_auto_segment(path, use_hdbscan=False):
 
 
 @celery.task(name="export_file", priority=2)
-def task_export(files_path, filetype, outputs_path=None, inputs_path=None, delimiter=False, force_recreate=False, simple=False):
+def task_export(files_path, filetype, outputs_path=None, inputs_path=None, delimiter=False, force_recreate=False, simple=False, compress=True):
     """
     Export a file to a specific format.
 
@@ -189,6 +189,7 @@ def task_export(files_path, filetype, outputs_path=None, inputs_path=None, delim
     :param delimiter: for txt, add delimiter between pages
     :param force_recreate: force recreation of existing files
     :param simple: for PDF, create simple version without index
+    :param compress: for PDF, whether to apply compression
     """
     # Calculate outputs_path if not provided
     if outputs_path is None:
@@ -196,7 +197,7 @@ def task_export(files_path, filetype, outputs_path=None, inputs_path=None, delim
         outputs_path = f"{OUTPUTS_PATH}/{relative_path}"
 
     return export_file(files_path, filetype, outputs_path=outputs_path, inputs_path=inputs_path,
-                       delimiter=delimiter, force_recreate=force_recreate, simple=simple)
+                       delimiter=delimiter, force_recreate=force_recreate, simple=simple, compress=compress)
 
 
 @celery.task(name="make_changes", priority=2)
@@ -227,6 +228,18 @@ def task_make_changes(files_path, outputs_path, data):
         inputs_path = f"{INPUTS_PATH}/{doc_basename}.{original_extension}"
     else:
         inputs_path = f"{INPUTS_PATH}/{relative_path.rsplit('/', 1)[0]}/{doc_basename}.{original_extension}".replace("//", "/")
+
+    # Extract compression setting from config (default to True if not specified or None)
+    config = data.get("ocr", {}).get("config", {})
+    
+    # Handle both dict config and "default" string
+    if isinstance(config, dict):
+        compress_value = config.get("compress")
+    else:
+        # Config is "default" string or something else
+        compress_value = None
+    
+    compress_pdf = True if compress_value is None else bool(compress_value)
 
     # Recreate formats already created, as well as any added to the config later
     recreate_types = {
@@ -300,6 +313,7 @@ def task_make_changes(files_path, outputs_path, data):
             force_recreate=True,
             keep_temp=data["pdf"]["complete"],
             get_csv=recreate_csv,
+            compress=compress_pdf,
         )
 
         exported_pdf = pdfium.PdfDocument(
@@ -336,6 +350,7 @@ def task_make_changes(files_path, outputs_path, data):
             simple=True,
             already_temp=data["pdf_indexed"]["complete"],
             get_csv=recreate_csv,
+            compress=compress_pdf,
         )
         data["pdf"] = {
             "complete": True,
@@ -481,15 +496,20 @@ def prepare_file_from_api(path: str, callback: Signature | None = None):
         basename = get_file_basename(path)
 
         if extension == "pdf":
-            pdf = pdfium.PdfDocument(f"{path}/{basename}.pdf")
+            # For API files, the original PDF is in the same folder as metadata
+            inputs_path = f"{path}/{basename}.pdf"
+            
+            pdf = pdfium.PdfDocument(inputs_path)
             num_pages = len(pdf)
             pdf.close()
 
             pdf_prep_callback = task_count_doc_pages.si(
                 path=path, extension=original_extension
             ).set(link=callback, ignore_result=True)
+            
+            # FIXED: Now passing all 4 required arguments (files_path, inputs_path, basename, i)
             chord(
-                task_extract_pdf_page.si(path, basename, i) for i in range(num_pages)
+                task_extract_pdf_page.si(path, inputs_path, basename, i) for i in range(num_pages)
             )(pdf_prep_callback)
 
         elif extension == "zip":
@@ -686,7 +706,7 @@ def task_prepare_file_ocr(inputs_path: str = None, files_path: str = None, path:
                     "JPEG",
                 )
             else:
-                compression = img._compression
+                compression = getattr(img, '_compression', 'tiff_deflate')
                 img.save(
                     f"{files_path}/_pages/{basename}_0.{original_extension}",
                     save_all=False,
@@ -800,20 +820,30 @@ def task_file_ocr(
     """
     Prepare the OCR of a file.
 
-    :param files_path: path to document folder in _files
-    :param outputs_path: path to document folder in _outputs
+    :param files_path: path to document folder in _files (or API_TEMP_PATH for API files)
+    :param outputs_path: path to document folder in _outputs (or _export subfolder for API files)
     :param config: config to use
     :param delete_on_finish: whether the original file and pages should be deleted after processing
     :param path: legacy parameter, used if files_path/outputs_path not provided
     """
+    # Check if this is an API file (stored in API_TEMP_PATH)
+    from src.utils.file import API_TEMP_PATH
+    is_api_file = API_TEMP_PATH in files_path if files_path else (API_TEMP_PATH in path if path else False)
+    
     # Support legacy usage
     if files_path is None and path is not None:
         files_path = path
-        relative_path = files_path.replace(FILES_PATH, "").strip("/")
-        outputs_path = f"{OUTPUTS_PATH}/{relative_path}"
+        if is_api_file:
+            outputs_path = f"{files_path}/_export"
+        else:
+            relative_path = files_path.replace(FILES_PATH, "").strip("/")
+            outputs_path = f"{OUTPUTS_PATH}/{relative_path}"
     elif outputs_path is None and files_path is not None:
-        relative_path = files_path.replace(FILES_PATH, "").strip("/")
-        outputs_path = f"{OUTPUTS_PATH}/{relative_path}"
+        if is_api_file:
+            outputs_path = f"{files_path}/_export"
+        else:
+            relative_path = files_path.replace(FILES_PATH, "").strip("/")
+            outputs_path = f"{OUTPUTS_PATH}/{relative_path}"
 
     data_file = f"{files_path}/_data.json"
     try:
@@ -1260,6 +1290,11 @@ def task_page_ocr(
             elif image is None:
                 image = Image.open(image_filename)
 
+            # Don't use single_page optimization if compression is enabled
+            # (single_page generates uncompressed PDFs directly from Tesseract)
+            compress_enabled = config.get("compress", True) if isinstance(config, dict) else True
+            use_single_page = n_doc_pages == 1 and not compress_enabled
+            
             json_results, raw_results = ocr_engine.get_structure(
                 page=image,
                 lang=lang,
@@ -1268,7 +1303,8 @@ def task_page_ocr(
                 outputs_path=outputs_path,
                 output_types=output_types,
                 # If single-page document, take advantage of output types to immediately generate results with Tesseract
-                single_page=n_doc_pages == 1,
+                # BUT: Skip this optimization if compression is enabled, as it bypasses the compression step
+                single_page=use_single_page,
             )
             page_json = json_results
 
@@ -1344,32 +1380,60 @@ def task_export_results(files_path: str = None, outputs_path: str = None, output
     """
     Export OCR results to various formats.
 
-    :param files_path: path to document folder in _files
-    :param outputs_path: path to document folder in _outputs
+    :param files_path: path to document folder in _files (or API_TEMP_PATH for API files)
+    :param outputs_path: path to document folder in _outputs (or _export subfolder for API files)
     :param output_types: list of output types to generate
     :param path: legacy parameter
     """
+    # Check if this is an API file (stored in API_TEMP_PATH)
+    from src.utils.file import API_TEMP_PATH
+    is_api_file = API_TEMP_PATH in files_path if files_path else False
+    
     # Support legacy usage
     if files_path is None and path is not None:
         files_path = path
         relative_path = files_path.replace(FILES_PATH, "").strip("/")
         outputs_path = f"{OUTPUTS_PATH}/{relative_path}"
     elif outputs_path is None and files_path is not None:
-        relative_path = files_path.replace(FILES_PATH, "").strip("/")
-        outputs_path = f"{OUTPUTS_PATH}/{relative_path}"
+        if is_api_file:
+            # For API files, outputs go in _export subfolder
+            outputs_path = f"{files_path}/_export"
+        else:
+            relative_path = files_path.replace(FILES_PATH, "").strip("/")
+            outputs_path = f"{OUTPUTS_PATH}/{relative_path}"
     else:
-        relative_path = files_path.replace(FILES_PATH, "").strip("/")
+        if not is_api_file:
+            relative_path = files_path.replace(FILES_PATH, "").strip("/")
 
     data_file = f"{files_path}/_data.json"
     data = get_data(data_file)
 
+    # Extract compression setting from config (default to True if not specified or None)
+    config = data.get("ocr", {}).get("config", {})
+    
+    # Handle both dict config and "default" string
+    if isinstance(config, dict):
+        compress_value = config.get("compress")
+    else:
+        # Config is "default" string or something else
+        compress_value = None
+    
+    compress_pdf = True if compress_value is None else bool(compress_value)
+
     # Calculate inputs_path to find original file
     doc_basename = get_file_basename(files_path)
     original_extension = data.get("extension", "pdf")
-    inputs_path = f"{INPUTS_PATH}/{relative_path.rsplit('/', 1)[0]}/{doc_basename}.{original_extension}".replace("//", "/")
-    # Handle root level files
-    if relative_path.count('/') == 0:
-        inputs_path = f"{INPUTS_PATH}/{doc_basename}.{original_extension}"
+    
+    if is_api_file:
+        # For API files, original is in the same folder as metadata
+        inputs_path = f"{files_path}/{doc_basename}.{original_extension}"
+    else:
+        # For regular files, original is in INPUTS_PATH
+        relative_path = files_path.replace(FILES_PATH, "").strip("/")
+        inputs_path = f"{INPUTS_PATH}/{relative_path.rsplit('/', 1)[0]}/{doc_basename}.{original_extension}".replace("//", "/")
+        # Handle root level files
+        if relative_path.count('/') == 0:
+            inputs_path = f"{INPUTS_PATH}/{doc_basename}.{original_extension}"
 
     update_json_file(
         data_file,
@@ -1464,6 +1528,7 @@ def task_export_results(files_path: str = None, outputs_path: str = None, output
                 inputs_path=inputs_path,
                 keep_temp=keep_temp_images,
                 get_csv=("csv" in output_types),
+                compress=compress_pdf,
             )
             creation_time = get_current_time()
             exported_pdf = pdfium.PdfDocument(
@@ -1508,6 +1573,7 @@ def task_export_results(files_path: str = None, outputs_path: str = None, output
                 simple=True,
                 already_temp=("pdf_indexed" in output_types),
                 get_csv=("csv" in output_types),
+                compress=compress_pdf,
             )
             creation_time = get_current_time()
             data["pdf"] = {

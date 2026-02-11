@@ -11,17 +11,23 @@ import { useTranslation } from "react-i18next";
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Typography from "@mui/material/Typography";
+import Select from '@mui/material/Select';
+import MenuItem from '@mui/material/MenuItem';
+import FormControl from '@mui/material/FormControl';
 
 import LockIcon from '@mui/icons-material/Lock';
 import HelpIcon from '@mui/icons-material/Help';
 import SearchIcon from '@mui/icons-material/Search';
+import FlashOnIcon from '@mui/icons-material/FlashOn';
 
 import {
     BrowserRouter,
+    Link,
     Navigate,
     Outlet,
     Route,
-    Routes, useLocation,
+    Routes,
+    useLocation,
     useNavigate,
     useParams
 } from "react-router";
@@ -43,6 +49,7 @@ import AdminDashboard from 'Components/Admin/Dashboard';
 import StorageManager from 'Components/Admin/StorageManager';
 import ConfigManager from 'Components/Admin/ConfigManager';
 import Footer from 'Components/Footer/Footer';
+import ImmediateOCRPage from 'Components/ImmediateOCR/ImmediateOCR';
 
 const API_URL = `${window.location.protocol}//${window.location.host}/${process.env.REACT_APP_API_URL}`;
 
@@ -300,51 +307,58 @@ function App() {
                             </Box>
 
                             <Box sx={{display: "flex", alignItems: "center", gap: "var(--spacing-md)"}}>
-                                <Box sx={{display: "flex", alignItems: "center", gap: "var(--spacing-xs)"}}>
-                                    <Button
-                                        variant="text"
-                                        size="small"
-                                        onClick={() => i18n.changeLanguage("pt")}
+                                <FormControl size="small" sx={{ minWidth: 100 }}>
+                                    <Select
+                                        value={i18n.language}
+                                        onChange={(e) => i18n.changeLanguage(e.target.value)}
                                         sx={{
-                                            minWidth: "auto",
-                                            color: i18n.language === "pt" ? "var(--accent-primary)" : "var(--text-secondary)",
-                                            textTransform: "none",
-                                            fontWeight: i18n.language === "pt" ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
-                                            padding: "var(--spacing-xs) var(--spacing-sm)",
+                                            color: "var(--text-primary)",
+                                            fontSize: "var(--font-size-sm)",
                                             borderRadius: "var(--radius-md)",
-                                            transition: "all var(--transition-fast)",
-                                            '&:hover': {
-                                                backgroundColor: "var(--card-hover-bg)",
+                                            backgroundColor: "var(--card-bg)",
+                                            '& .MuiOutlinedInput-notchedOutline': {
+                                                borderColor: "var(--border-color)",
+                                            },
+                                            '&:hover .MuiOutlinedInput-notchedOutline': {
+                                                borderColor: "var(--accent-primary)",
+                                            },
+                                            '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                                                borderColor: "var(--accent-primary)",
                                             },
                                         }}
                                     >
-                                        PT
-                                    </Button>
-                                    <Typography variant="body2" sx={{ color: "var(--text-tertiary)" }}>|</Typography>
-                                    <Button
-                                        variant="text"
-                                        size="small"
-                                        onClick={() => i18n.changeLanguage("en")}
-                                        sx={{
-                                            minWidth: "auto",
-                                            color: i18n.language === "en" ? "var(--accent-primary)" : "var(--text-secondary)",
-                                            textTransform: "none",
-                                            fontWeight: i18n.language === "en" ? "var(--font-weight-semibold)" : "var(--font-weight-normal)",
-                                            padding: "var(--spacing-xs) var(--spacing-sm)",
-                                            borderRadius: "var(--radius-md)",
-                                            transition: "all var(--transition-fast)",
-                                            '&:hover': {
-                                                backgroundColor: "var(--card-hover-bg)",
-                                            },
-                                        }}
-                                    >
-                                        EN
-                                    </Button>
-                                </Box>
+                                        <MenuItem value="en">EN - English</MenuItem>
+                                        <MenuItem value="pt">PT - Português</MenuItem>
+                                        <MenuItem value="ar">AR - العربية</MenuItem>
+                                        <MenuItem value="zh">ZH - 中文</MenuItem>
+                                        <MenuItem value="fr">FR - Français</MenuItem>
+                                        <MenuItem value="ru">RU - Русский</MenuItem>
+                                        <MenuItem value="es">ES - Español</MenuItem>
+                                    </Select>
+                                </FormControl>
 
                                 <Typography variant="body2" sx={{ color: "var(--text-tertiary)", fontSize: "var(--font-size-xs)" }}>
                                     {t("version")}: {VERSION}
                                 </Typography>
+
+                                <Button
+                                    component={Link}
+                                    to="/immediate-ocr"
+                                    variant="text"
+                                    startIcon={<FlashOnIcon/>}
+                                    className="red-link"
+                                    sx={{
+                                        textTransform: "none",
+                                        padding: "var(--spacing-xs) var(--spacing-sm)",
+                                        borderRadius: "var(--radius-md)",
+                                        fontSize: "var(--font-size-sm)",
+                                        '&:hover': {
+                                            backgroundColor: "var(--card-hover-bg)",
+                                        },
+                                    }}
+                                >
+                                    {t("immediate ocr")}
+                                </Button>
 
                                 <Button
                                     variant="text"
@@ -519,6 +533,7 @@ function App() {
                 <Routes>
                     <Route index element={<WrappedForm />} />
                     <Route path="/space/:spaceId" element={<WrappedForm />} />
+                    <Route path="/immediate-ocr" element={<ImmediateOCRPage />} />
 
                     <Route element={<ProtectedRoute isAuthenticated={isAuthenticated}/>} >
                         <Route exact path="/admin" element={<AdminDashboard />} />

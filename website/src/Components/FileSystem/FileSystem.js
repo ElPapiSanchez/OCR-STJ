@@ -51,7 +51,7 @@ import { MODEL, UN_ARMS, STJ } from 'App';
 dayjs.extend(customParseFormat);
 
 const UPDATE_PERIOD_SECONDS = 15;
-const UPLOAD_UPDATE_SECONDS = 5;
+const UPLOAD_UPDATE_SECONDS = 2;  // More frequent updates during upload (was 5)
 const STUCK_CHECK_PERIOD_SECONDS = 2 * 60;  // check for stuck uploads every 2 minutes
 const STUCK_UPLOAD_TIMEOUT_MINUTES = 4; // files still not ready for OCR after these minutes are considered stuck
 
@@ -548,6 +548,10 @@ class FileExplorer extends React.Component {
 
                 if (i + 1 === _totalCount) {
                     window.removeEventListener('beforeunload', uniquePreventExit);
+                    // Refresh file list after last chunk is uploaded to ensure proper display
+                    setTimeout(() => {
+                        this.fetchFiles();
+                    }, 1000);
                 }
             } else {
                 this.storageMenu.current.openWithMessage(data.error);
@@ -555,7 +559,7 @@ class FileExplorer extends React.Component {
         })
         .catch(error => {
             // TODO: give feedback to user on communication error
-            this.sendChunk(i, chunk, fileName, _totalCount, _fileID);
+            this.sendChunk(i, chunk, fileName, _totalCount, _fileID, uniquePreventExit);
         });
     }
 
@@ -617,12 +621,6 @@ class FileExplorer extends React.Component {
                         window.addEventListener('beforeunload', uniquePreventExit);
                         fileName = data["filename"];  // update filename if server changed it due to name collisions
 
-                        //// Update list of files on screen after upload of first chunk
-                        // Add a small delay to ensure backend has finished creating metadata
-                        setTimeout(() => {
-                            this.fetchFiles();
-                        }, 100);
-
                         // Send chunks
                         let startChunk = 0;
                         let endChunk = chunkSize;
@@ -632,6 +630,12 @@ class FileExplorer extends React.Component {
                             endChunk = endChunk + chunkSize;
                             this.sendChunk(i, chunk, fileName, _totalCount, _fileID, uniquePreventExit);
                         }
+                        
+                        //// Update list of files on screen after first chunk is sent
+                        // Add a delay to ensure backend has started processing the first chunk
+                        setTimeout(() => {
+                            this.fetchFiles();
+                        }, 500);
                     } else {
                         this.storageMenu.current.openWithMessage(data.error);
                     }
@@ -993,9 +997,10 @@ class FileExplorer extends React.Component {
 
             // Common props for both view modes
             const itemInfo = this.getInfo(itemName);
-            // Include stored status and OCR progress in key to force re-render when they change
+            // Include stored status/progress and OCR progress in key to force re-render when they change
             const ocrProgress = itemInfo?.ocr?.progress || 0;
-            const itemKey = this.props.current_folder + "/" + itemName + "/" + (itemInfo?.stored || 'unknown') + "/" + ocrProgress;
+            const storedKey = typeof itemInfo?.stored === 'number' ? Math.floor(itemInfo.stored / 5) : itemInfo?.stored || 'unknown';
+            const itemKey = this.props.current_folder + "/" + itemName + "/" + storedKey + "/" + ocrProgress;
             const commonProps = {
                 ref: ref,
                 key: itemKey,

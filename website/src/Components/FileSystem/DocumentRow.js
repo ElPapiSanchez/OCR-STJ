@@ -272,7 +272,7 @@ class DocumentRow extends React.Component {
                         <IconButton className="actionButton">
                             <OcrIcon />
                         </IconButton>
-                        &nbsp;Fazer OCR
+                        &nbsp;{this.props.t(info?.["ocr"] ? "repeat ocr" : "run ocr")}
                     </MenuItem>
 
                     <MenuItem
@@ -288,7 +288,7 @@ class DocumentRow extends React.Component {
                             >
                             {usingCustomConfig ? <SettingsSuggestIcon /> : <SettingsIcon />}
                         </IconButton>
-                        &nbsp;{usingCustomConfig ? "Editar Configuração" : "Configurar OCR"}
+                        &nbsp;{usingCustomConfig ? this.props.t("alter existing config") : this.props.t("config ocr")}
                     </MenuItem>
 
                     <MenuItem
@@ -304,7 +304,7 @@ class DocumentRow extends React.Component {
                             >
                             {hasLayoutBoxes ? <BorderAllIcon /> : <BorderClearIcon />}
                         </IconButton>
-                        &nbsp;{hasLayoutBoxes ? "Alterar Segmentação" : "Definir Segmentação"}
+                        &nbsp;{hasLayoutBoxes ? this.props.t("edit results") : this.props.t("layout create")}
                     </MenuItem>
 
                     <MenuItem
@@ -314,7 +314,7 @@ class DocumentRow extends React.Component {
                         <IconButton className="actionButton">
                             <EditNoteIcon />
                         </IconButton>
-                        &nbsp;Editar Resultados
+                        &nbsp;{this.props.t("edit text")}
                     </MenuItem>
 
                     {
@@ -328,7 +328,7 @@ class DocumentRow extends React.Component {
                                     <IconButton className="negActionButton">
                                         <IconDatabaseOff />
                                     </IconButton>
-                                    &nbsp;Desindexar
+                                    &nbsp;{this.props.t("deindex")}
                                 </MenuItem>
 
                                 : <MenuItem
@@ -338,7 +338,7 @@ class DocumentRow extends React.Component {
                                     <IconButton className="actionButton">
                                         <IconDatabaseImport />
                                     </IconButton>
-                                    &nbsp;Indexar
+                                    &nbsp;{this.props.t("index")}
                                 </MenuItem>)
                     }
 
@@ -349,7 +349,7 @@ class DocumentRow extends React.Component {
                         <IconButton className="negActionButton">
                             <DeleteForeverIcon />
                         </IconButton>
-                        &nbsp;Apagar
+                        &nbsp;{this.props.t("delete")}
                     </MenuItem>
                     </Box>
 
@@ -369,7 +369,7 @@ class DocumentRow extends React.Component {
                 >
                     <TableCell className="explorerCell optionsCell">
                         <IconButton
-                            aria-label={"Opções para " + this.props.name}
+                            aria-label={this.props.t("details") + " " + this.props.name}
                             onClick={(e) => this.handleOptionsClick(e)}
                         >
                             <MoreVertIcon />
@@ -462,16 +462,32 @@ class DocumentRow extends React.Component {
                         : status?.stage === "uploading"
                             ? <TableCell className="explorerCell stateCell infoCell" align='left'>
                                 <Box className="stateBox">
-                                    <CircularProgress sx={{ml: '1rem', mr: '1rem', flexShrink: "0"}} size='1rem'/>
-                                    <span>{this.props.t("uploading stage")}</span>
+                                    <CircularProgress 
+                                        sx={{ml: '1rem', mr: '1rem', flexShrink: "0"}} 
+                                        size='1rem'
+                                        variant={typeof info["stored"] === "number" ? "determinate" : "indeterminate"}
+                                        value={typeof info["stored"] === "number" ? info["stored"] : 0}
+                                    />
+                                    <span>
+                                        {this.props.t("uploading stage")}
+                                        {typeof info["stored"] === "number" && ` (${Math.round(info["stored"])}%)`}
+                                    </span>
                                 </Box>
                             </TableCell>
 
                         : status?.stage === "preparing"
                             ? <TableCell className="explorerCell stateCell infoCell" align='left'>
                                 <Box className="stateBox">
-                                    <CircularProgress sx={{ml: '1rem', mr: '1rem', flexShrink: "0"}} size='1rem'/>
-                                    <span>{this.props.t("preparing stage")}</span>
+                                    <CircularProgress 
+                                        sx={{ml: '1rem', mr: '1rem', flexShrink: "0"}} 
+                                        size='1rem'
+                                        variant={typeof info["stored"] === "number" ? "determinate" : "indeterminate"}
+                                        value={typeof info["stored"] === "number" ? info["stored"] : 0}
+                                    />
+                                    <span>
+                                        {this.props.t("preparing stage")}
+                                        {typeof info["stored"] === "number" && ` (${Math.round(info["stored"])}%)`}
+                                    </span>
                                 </Box>
                             </TableCell>
                         : null
@@ -511,6 +527,22 @@ class DocumentRow extends React.Component {
                         <Box className="stateBox">
                             <CircularProgress sx={{ml: '1rem', mr: '1rem', flexShrink: "0"}} size='1rem' />
                             <span>{status.message}</span>
+                        </Box>
+                    </TableCell>
+
+                    : status?.stage === "compressing"
+                    ? <TableCell className="explorerCell stateCell infoCell" align='left'>
+                        <Box className="stateBox">
+                            <CircularProgress 
+                                sx={{ml: '1rem', mr: '1rem', flexShrink: "0"}} 
+                                size='1rem' 
+                                variant={status.progress !== undefined ? "determinate" : "indeterminate"}
+                                value={status.progress || 0}
+                            />
+                            <span>
+                                {status.message}
+                                {status.progress !== undefined && ` (${Math.round(status.progress)}%)`}
+                            </span>
                         </Box>
                     </TableCell>
 
