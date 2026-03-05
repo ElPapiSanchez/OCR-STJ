@@ -29,7 +29,10 @@ import CheckboxList from 'Components/Form/CheckboxList';
 import { tesseractLangList } from 'defaultOcrConfigs';
 import Footer from 'Components/Footer/Footer';
 
-const API_URL = `${window.location.protocol}//${window.location.host}/${process.env.REACT_APP_API_URL}`;
+// Construct API URL, removing any double slashes
+const apiPath = process.env.REACT_APP_API_URL || 'api';
+const cleanApiPath = apiPath.replace(/^\/+|\/+$/g, ''); // Remove leading/trailing slashes
+const API_URL = `${window.location.protocol}//${window.location.host}/${cleanApiPath}`;
 
 class ImmediateOCR extends React.Component {
     constructor(props) {
@@ -53,6 +56,7 @@ class ImmediateOCR extends React.Component {
             
             // Compression setting
             enableCompression: true,
+            compressionQuality: 'auto', // 'auto', 'fast', or 'high'
             
             // Processing state
             status: 'idle', // idle, uploading, processing, complete, error
@@ -124,7 +128,7 @@ class ImmediateOCR extends React.Component {
     }
     
     async processFile() {
-        const { uploadedFile, selectedLanguages, selectedPreset, outputFormats, enableCompression } = this.state;
+        const { uploadedFile, selectedLanguages, selectedPreset, outputFormats, enableCompression, compressionQuality } = this.state;
         
         if (!uploadedFile) {
             this.setState({ errorMessage: this.props.t('no file uploaded') });
@@ -165,8 +169,11 @@ class ImmediateOCR extends React.Component {
             
             // Send preset name or full config
             if (selectedPreset && selectedPreset !== 'default') {
-                // Send preset name as string
+                // Send preset name as string, but include compression settings separately
                 formData.append('config', selectedPreset);
+                // Add compression settings that override preset
+                formData.append('compress', enableCompression);
+                formData.append('compressionQuality', compressionQuality);
             } else {
                 // Send complete config with all required fields
                 const config = {
@@ -176,7 +183,8 @@ class ImmediateOCR extends React.Component {
                     engineMode: 3,
                     segmentMode: 3,
                     thresholdMethod: 0,
-                    compress: enableCompression
+                    compress: enableCompression,
+                    compressionQuality: compressionQuality
                 };
                 formData.append('config', JSON.stringify(config));
             }
@@ -212,7 +220,7 @@ class ImmediateOCR extends React.Component {
     }
     
     async pollStatus() {
-        const { docId } = this.state;
+        const { docId, enableCompression, outputFormats } = this.state;
         if (!docId) return;
         
         try {
@@ -222,11 +230,68 @@ class ImmediateOCR extends React.Component {
             
             const data = response.data;
             
-            // Update progress
-            const progress = data.ocr?.progress || 0;
+            // Translate backend status messages
+            let statusMessage = data.status?.message || this.props.t('processing document');
+            
+            // Check for compression messages in Portuguese and translate them
+            if (statusMessage.includes('A comprimir PDF')) {
+                if (statusMessage.includes('A iniciar')) {
+                    statusMessage = this.props.t('compressing pdf starting');
+                } else if (statusMessage.includes('A finalizar')) {
+                    statusMessage = this.props.t('compressing pdf finalizing');
+                } else if (statusMessage.match(/Página \d+\/\d+/)) {
+                    const match = statusMessage.match(/Página (\d+)\/(\d+)/);
+                    if (match) {
+                        statusMessage = this.props.t('compressing pdf page', { current: match[1], total: match[2] });
+                    } else {
+                        statusMessage = this.props.t('compressing pdf');
+                    }
+                } else if (statusMessage.includes('concluída')) {
+                    statusMessage = this.props.t('compression complete');
+                } else {
+                    statusMessage = this.props.t('compressing pdf');
+                }
+            }
+            
+            // Calculate progress percentage based on stage
+            let progressPercent = 0;
+            const stage = data.status?.stage;
+            
+            // Check if PDF outputs are requested (which may trigger compression)
+            const hasPdfOutput = outputFormats.pdf || outputFormats.pdf_indexed;
+            const willCompress = enableCompression && hasPdfOutput;
+            
+            if (stage === 'ocr') {
+                // OCR stage: map to 0-50% if compression will occur, otherwise 0-100%
+                const ocrProgress = data.ocr?.progress || 0;
+                const totalPages = data.pages || 1;
+                const ocrPercent = (ocrProgress / totalPages) * 100;
+                
+                if (willCompress) {
+                    // If compression enabled, OCR is 0-50%
+                    progressPercent = Math.min(50, ocrPercent * 0.5);
+                } else {
+                    // If no compression, OCR is 0-100%
+                    progressPercent = Math.min(100, ocrPercent);
+                }
+            } else if (stage === 'compressing') {
+                // Compression stage: map to 50-100%
+                const compressionProgress = data.status?.progress || 0;
+                progressPercent = 50 + (compressionProgress * 0.5);
+            } else if (stage === 'exporting') {
+                // Exporting stage: use 90-100%
+                progressPercent = willCompress ? 95 : 90;
+            } else if (stage === 'post-ocr') {
+                // Complete
+                progressPercent = 100;
+            } else {
+                // Default to raw progress value for other stages
+                progressPercent = data.ocr?.progress || 0;
+            }
+            
             this.setState({ 
-                progress: progress,
-                statusMessage: data.status?.message || this.props.t('processing document')
+                progress: Math.round(progressPercent),
+                statusMessage: statusMessage
             });
             
             // Check if complete
@@ -240,7 +305,7 @@ class ImmediateOCR extends React.Component {
                 .filter(([_, selected]) => selected)
                 .every(([format, _]) => resultsComplete[format]);
             
-            if (allComplete && data.status?.stage !== 'ocr') {
+            if (allComplete && stage !== 'ocr' && stage !== 'compressing') {
                 // Processing complete
                 clearInterval(this.pollInterval);
                 this.pollInterval = null;
@@ -250,7 +315,7 @@ class ImmediateOCR extends React.Component {
                     availableResults: resultsComplete,
                     statusMessage: this.props.t('ocr complete')
                 });
-            } else if (data.status?.stage === 'error') {
+            } else if (stage === 'error') {
                 // Error occurred
                 clearInterval(this.pollInterval);
                 this.pollInterval = null;
@@ -562,6 +627,46 @@ class ImmediateOCR extends React.Component {
                                     </Box>
                                 }
                             />
+                            
+                            {/* Compression Quality Selector */}
+                            {enableCompression && (
+                                <Box sx={{ mt: 2, pl: 4 }}>
+                                    <FormControl fullWidth size="small">
+                                        <InputLabel id="compression-quality-label">{t('compression quality')}</InputLabel>
+                                        <Select
+                                            labelId="compression-quality-label"
+                                            value={this.state.compressionQuality}
+                                            label={t('compression quality')}
+                                            onChange={(e) => this.setState({ compressionQuality: e.target.value })}
+                                        >
+                                            <MenuItem value="auto">
+                                                <Box>
+                                                    <Typography variant="body2">{t('compression auto')}</Typography>
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        {t('compression auto desc')}
+                                                    </Typography>
+                                                </Box>
+                                            </MenuItem>
+                                            <MenuItem value="fast">
+                                                <Box>
+                                                    <Typography variant="body2">{t('compression fast')}</Typography>
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        {t('compression fast desc')}
+                                                    </Typography>
+                                                </Box>
+                                            </MenuItem>
+                                            <MenuItem value="high">
+                                                <Box>
+                                                    <Typography variant="body2">{t('compression high quality')}</Typography>
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        {t('compression high quality desc')}
+                                                    </Typography>
+                                                </Box>
+                                            </MenuItem>
+                                        </Select>
+                                    </FormControl>
+                                </Box>
+                            )}
                         </Paper>
                         
                         {/* Process Button */}

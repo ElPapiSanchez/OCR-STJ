@@ -18,6 +18,9 @@ import RadioGroup from "@mui/material/RadioGroup";
 import Radio from "@mui/material/Radio";
 import FormControl from "@mui/material/FormControl";
 import Switch from "@mui/material/Switch";
+import MenuItem from "@mui/material/MenuItem";
+import Select from "@mui/material/Select";
+import InputLabel from "@mui/material/InputLabel";
 
 import {
     defaultConfig,
@@ -33,8 +36,8 @@ import {
 import ReturnButton from 'Components/FileSystem/ReturnButton';
 import ConfirmLeave from 'Components/Notifications/ConfirmLeave';
 import Notification from 'Components/Notifications/Notification';
-//const AlgoDropdown = loadComponent('Dropdown', 'AlgoDropdown');
 import CheckboxList from 'Components/Form/CheckboxList';
+import InfoTooltip from 'Components/Form/InfoTooltip';
 
 const API_URL = `${window.location.protocol}//${window.location.host}/${process.env.REACT_APP_API_URL}`;
 
@@ -54,6 +57,7 @@ class OcrMenu extends React.Component {
         this.state = {
             ...emptyConfig,
             compress: true,  // Ensure compress is always initialized
+            compressionQuality: 'auto',  // Add compression quality setting
             presetsList: [],
             presetName: "",
             defaultConfig: defaultConfig,
@@ -109,13 +113,17 @@ class OcrMenu extends React.Component {
                     if (initialConfig.compress === undefined || initialConfig.compress === null) {
                         initialConfig.compress = true;
                     }
+                    // Ensure compressionQuality is always set (default to 'auto' if missing)
+                    if (!initialConfig.compressionQuality) {
+                        initialConfig.compressionQuality = 'auto';
+                    }
                     this.setState({...initialConfig, defaultConfig: data, loaded: true, usingDefault: usingDefault});
                 } else {
                     this.setState({defaultConfig: data});
                 }
             })
             .catch(err => {
-                this.errorNot.current.openNotif("Não foi possível obter a configuração por defeito mais atual");
+                this.errorNot.current.openNotif(this.props.t("error fetch default config"));
                 if (!this.state.loaded) {
                     // entering config, use hardcoded default for initial config
                     const configToApply = savedConfig || this.props.customConfig;
@@ -124,6 +132,10 @@ class OcrMenu extends React.Component {
                     // Ensure compress is always set (default to true if missing)
                     if (initialConfig.compress === undefined || initialConfig.compress === null) {
                         initialConfig.compress = true;
+                    }
+                    // Ensure compressionQuality is always set (default to 'auto' if missing)
+                    if (!initialConfig.compressionQuality) {
+                        initialConfig.compressionQuality = 'auto';
                     }
                     this.setState({...initialConfig, loaded: true, usingDefault: usingDefault});
                 }
@@ -178,6 +190,10 @@ class OcrMenu extends React.Component {
             }
         })
             .then(({ data }) => {
+                // Ensure compressionQuality is set
+                if (!data.compressionQuality) {
+                    data.compressionQuality = 'auto';
+                }
                 this.setState({
                     ...data,
                     presetName: name,
@@ -187,7 +203,7 @@ class OcrMenu extends React.Component {
                 });
             })
             .catch(err => {
-                this.errorNot.current.openNotif("Não foi possível obter a configuração predefinida");
+                this.errorNot.current.openNotif(this.props.t("error fetch preset"));
                 this.setState({presetName: null, fetchingPreset: false});
             });
     }
@@ -198,7 +214,7 @@ class OcrMenu extends React.Component {
                 this.setState({presetsList: data});
             })
             .catch(err => {
-                this.errorNot.current.openNotif("Não foi possível atualizar a lista de configurações predefinidas");
+                this.errorNot.current.openNotif(this.props.t("error fetch presets list"));
             });
     }
 
@@ -234,6 +250,7 @@ class OcrMenu extends React.Component {
             segmentMode: this.state.segmentMode,
             thresholdMethod: this.state.thresholdMethod,
             compress: this.state.compress !== undefined ? this.state.compress : true,
+            compressionQuality: this.state.compressionQuality || 'auto',
         }
         if (this.state.dpiVal !== null && this.state.dpiVal !== "") {
             config.dpi = this.state.dpiVal;
@@ -254,12 +271,17 @@ class OcrMenu extends React.Component {
 
     restoreDefault() {
         if (this.state.usingDefault) return;
-        this.setState({
+        const restoredConfig = {
             ...this.state.defaultConfig,
             presetName: null,
             usingDefault: true,
             uncommittedChanges: this.props.customConfig != null,  // no changes if was already default
-        });
+        };
+        // Ensure compressionQuality is set
+        if (!restoredConfig.compressionQuality) {
+            restoredConfig.compressionQuality = 'auto';
+        }
+        this.setState(restoredConfig);
     }
 
     setLangList(checked) {
@@ -273,7 +295,7 @@ class OcrMenu extends React.Component {
     changeDpi(value) {
         value = value.trim()
         if (!(/^[1-9][0-9]*$/.test(value))) {
-            this.errorNot.current.openNotif("O valor de DPI deve ser um número inteiro!");
+            this.errorNot.current.openNotif(this.props.t("error dpi must be integer"));
         }
         this.setState({ dpiVal: value, usingDefault: false, uncommittedChanges: true });
     }
@@ -292,6 +314,10 @@ class OcrMenu extends React.Component {
 
     changeCompress(value) {
         this.setState({ compress: value, usingDefault: false, uncommittedChanges: true });
+    }
+    
+    changeCompressionQuality(value) {
+        this.setState({ compressionQuality: value, usingDefault: false, uncommittedChanges: true });
     }
 
     changeThresholdingMethod(value) {
@@ -335,7 +361,7 @@ class OcrMenu extends React.Component {
                 if (data["success"]) {
                     this.setState({ uncommittedChanges: false });
 
-                    this.successNot.current.openNotif("Configuração de OCR guardada com sucesso.");
+                    this.successNot.current.openNotif(this.props.t("success config saved"));
 
                     if (exit) {
                         this.leave();
@@ -343,11 +369,11 @@ class OcrMenu extends React.Component {
                         this.props.setCurrentCustomConfig(config);
                     }
                 } else {
-                    this.errorNot.current.openNotif("Erro inesperado ao guardar a configuração de OCR.")
+                    this.errorNot.current.openNotif(this.props.t("error config save unexpected"))
                 }
             })
             .catch(err => {
-                this.errorNot.current.openNotif("Não foi possível guardar a configuração de OCR.");
+                this.errorNot.current.openNotif(this.props.t("error config save failed"));
             });
     }
 
@@ -473,35 +499,44 @@ class OcrMenu extends React.Component {
                 <Box sx={{
                     display: 'flex',
                     flexDirection: 'column',
+                    maxHeight: '65vh',
+                    overflowY: 'auto',
+                    overflowX: 'visible',
+                    paddingRight: '1.5rem',
+                    paddingLeft: '3rem',
+                    paddingTop: '0.25rem',
+                    paddingBottom: '0.5rem',
                 }}>
-                    <CheckboxList title={this.props.t("output formats")}
-                                  options={this.state.outputOptions}
-                                  checked={this.state.outputs}
-                                  onChangeCallback={this.setOutputList}
-                                  required
-                                  errorText="Deve selecionar pelo menos um formato de resultado"/>
-                </Box>
-
-                <Box sx={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                }}>
-                    <CheckboxList title={this.props.t("language")}
+                    <Box sx={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
+                        <Typography component="legend" sx={{ fontWeight: 500 }}>
+                            {this.props.t("language")}
+                        </Typography>
+                        <InfoTooltip title={this.props.t("ocr_help.language")} />
+                    </Box>
+                    <CheckboxList title=""
                                   options={tesseractLangList()}
                                   checked={this.state.lang}
                                   onChangeCallback={this.setLangList}
                                   required
                                   showOrder
-                                  helperText="Para melhores resultados, selecione por ordem de relevância"
-                                  errorText="Deve selecionar pelo menos uma língua"/>
+                                  helperText={this.props.t("helper text language order")}
+                                  errorText={this.props.t("error must select language")}/>
                 </Box>
 
                 <Box sx={{
                     display: 'flex',
                     flexDirection: 'column',
                     width: '30%',
+                    maxHeight: '65vh',
+                    overflowY: 'auto',
+                    overflowX: 'visible',
+                    paddingRight: '1rem',
+                    paddingLeft: '0.5rem',
+                    paddingTop: '0.25rem',
+                    paddingBottom: '0.5rem',
                 }}>
-                    <TextField ref={this.dpiField}
+                    <Box sx={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
+                        <TextField ref={this.dpiField}
                                label={this.props.t("dpi")}
                                slotProps={{htmlInput: { inputMode: "numeric", pattern: "[1-9][0-9]*" }}}
                                error={isNaN(this.state.dpiVal)
@@ -513,10 +548,14 @@ class OcrMenu extends React.Component {
                                size="small"
                                className="simpleInput"
                                sx={{
-                                   "& input:focus:invalid + fieldset": {borderColor: "red", borderWidth: 2}
+                                   "& input:focus:invalid + fieldset": {borderColor: "red", borderWidth: 2},
+                                   flexGrow: 1,
                                 }}
-                    />
+                        />
+                        <InfoTooltip title={this.props.t("ocr_help.dpi")} />
+                    </Box>
 
+                    {/* Engine selector hidden - only TesserOCR is available
                     <FormControl className="simpleDropdown borderTop">
                         <FormLabel id="label-ocr-engine-select">{this.props.t("ocr engine")}</FormLabel>
                         <RadioGroup
@@ -530,9 +569,13 @@ class OcrMenu extends React.Component {
                             }
                         </RadioGroup>
                     </FormControl>
+                    */}
 
                     <FormControl className="simpleDropdown borderTop">
-                        <FormLabel id="label-engine-type-select">{this.props.t("engine mode")}</FormLabel>
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <FormLabel id="label-engine-type-select">{this.props.t("engine mode")}</FormLabel>
+                            <InfoTooltip title={this.props.t("ocr_help.engine_mode")} />
+                        </Box>
                         <RadioGroup
                             aria-labelledby="label-engine-type-select"
                             value={this.state.engineMode}
@@ -546,7 +589,10 @@ class OcrMenu extends React.Component {
                     </FormControl>
 
                     <FormControl className="simpleDropdown borderTop">
-                        <FormLabel id="label-segmentation-select">{this.props.t("segmentation")}</FormLabel>
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <FormLabel id="label-segmentation-select">{this.props.t("segmentation")}</FormLabel>
+                            <InfoTooltip title={this.props.t("ocr_help.segmentation")} />
+                        </Box>
                         <RadioGroup
                             aria-labelledby="label-segmentation-select"
                             value={this.state.segmentMode}
@@ -560,7 +606,10 @@ class OcrMenu extends React.Component {
                     </FormControl>
 
                     <FormControl className="simpleDropdown borderTop">
-                        <FormLabel id="label-thresholding-select">{this.props.t("thresholding")}</FormLabel>
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <FormLabel id="label-thresholding-select">{this.props.t("thresholding")}</FormLabel>
+                            <InfoTooltip title={this.props.t("ocr_help.thresholding")} />
+                        </Box>
                         <RadioGroup
                             aria-labelledby="label-thresholding-select"
                             value={this.state.thresholdMethod}
@@ -573,7 +622,8 @@ class OcrMenu extends React.Component {
                         </RadioGroup>
                     </FormControl>
 
-                    <TextField ref={this.moreParams}
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', marginTop: '1rem' }}>
+                        <TextField ref={this.moreParams}
                                label={this.props.t("aditional parameters")}
                                value={this.state.otherParams}
                                onChange={(e) => this.changeAdditionalParams(e.target.value)}
@@ -581,23 +631,88 @@ class OcrMenu extends React.Component {
                                className="simpleInput borderTop"
                                size="small"
                                slotProps={{inputLabel: {sx: {top: "0.5rem"}}}}
-                    />
+                               sx={{ flexGrow: 1 }}
+                        />
+                        <InfoTooltip title={this.props.t("ocr_help.additional_params")} />
+                    </Box>
 
                     <FormControl className="simpleDropdown borderTop" sx={{ paddingTop: '1rem' }}>
-                        <FormControlLabel
-                            control={
-                                <Switch
-                                    checked={this.state.compress !== undefined ? this.state.compress : true}
-                                    onChange={(e) => this.changeCompress(e.target.checked)}
-                                    color="primary"
-                                />
-                            }
-                            label={this.props.t("compress pdf")}
-                        />
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <FormControlLabel
+                                control={
+                                    <Switch
+                                        checked={this.state.compress !== undefined ? this.state.compress : true}
+                                        onChange={(e) => this.changeCompress(e.target.checked)}
+                                        color="primary"
+                                    />
+                                }
+                                label={this.props.t("compress pdf")}
+                            />
+                            <InfoTooltip title={this.props.t("ocr_help.compress_pdf")} />
+                        </Box>
                         <Typography variant="caption" color="text.secondary" sx={{ ml: 2, mt: 0.5 }}>
                             {this.props.t("compress pdf description")}
                         </Typography>
+                        
+                        {/* Compression Quality Selector */}
+                        {(this.state.compress !== undefined ? this.state.compress : true) && (
+                            <Box sx={{ mt: 2, ml: 2 }}>
+                                <FormControl fullWidth size="small">
+                                    <InputLabel id="compression-quality-label">{this.props.t('compression quality')}</InputLabel>
+                                    <Select
+                                        labelId="compression-quality-label"
+                                        value={this.state.compressionQuality || 'auto'}
+                                        label={this.props.t('compression quality')}
+                                        onChange={(e) => this.changeCompressionQuality(e.target.value)}
+                                    >
+                                        <MenuItem value="auto">
+                                            <Box>
+                                                <Typography variant="body2">{this.props.t('compression auto')}</Typography>
+                                                <Typography variant="caption" color="text.secondary">{this.props.t('compression auto desc')}</Typography>
+                                            </Box>
+                                        </MenuItem>
+                                        <MenuItem value="fast">
+                                            <Box>
+                                                <Typography variant="body2">{this.props.t('compression fast')}</Typography>
+                                                <Typography variant="caption" color="text.secondary">{this.props.t('compression fast desc')}</Typography>
+                                            </Box>
+                                        </MenuItem>
+                                        <MenuItem value="high">
+                                            <Box>
+                                                <Typography variant="body2">{this.props.t('compression high quality')}</Typography>
+                                                <Typography variant="caption" color="text.secondary">{this.props.t('compression high quality desc')}</Typography>
+                                            </Box>
+                                        </MenuItem>
+                                    </Select>
+                                </FormControl>
+                            </Box>
+                        )}
                     </FormControl>
+                </Box>
+
+                <Box sx={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    maxHeight: '65vh',
+                    overflowY: 'auto',
+                    overflowX: 'visible',
+                    paddingRight: '1.5rem',
+                    paddingLeft: '1rem',
+                    paddingTop: '0.25rem',
+                    paddingBottom: '0.5rem',
+                }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
+                        <Typography component="legend" sx={{ fontWeight: 500 }}>
+                            {this.props.t("output formats")}
+                        </Typography>
+                        <InfoTooltip title={this.props.t("ocr_help.output_formats")} />
+                    </Box>
+                    <CheckboxList title=""
+                                  options={this.state.outputOptions}
+                                  checked={this.state.outputs}
+                                  onChangeCallback={this.setOutputList}
+                                  required
+                                  errorText={this.props.t("error must select output")}/>
                 </Box>
 
                 {/*

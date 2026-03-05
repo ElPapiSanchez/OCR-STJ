@@ -50,6 +50,8 @@ import StorageManager from 'Components/Admin/StorageManager';
 import ConfigManager from 'Components/Admin/ConfigManager';
 import Footer from 'Components/Footer/Footer';
 import ImmediateOCRPage from 'Components/ImmediateOCR/ImmediateOCR';
+import QueueMonitor from 'Components/QueueMonitor/QueueMonitor';
+import QueueStatusPage from 'Components/QueueMonitor/QueueStatusPage';
 
 const API_URL = `${window.location.protocol}//${window.location.host}/${process.env.REACT_APP_API_URL}`;
 
@@ -307,6 +309,9 @@ function App() {
                             </Box>
 
                             <Box sx={{display: "flex", alignItems: "center", gap: "var(--spacing-md)"}}>
+                                {/* Queue Monitor - Compact View */}
+                                <QueueMonitor compact={true} autoRefresh={true} refreshInterval={5000} />
+
                                 <FormControl size="small" sx={{ minWidth: 100 }}>
                                     <Select
                                         value={i18n.language}
@@ -340,25 +345,6 @@ function App() {
                                 <Typography variant="body2" sx={{ color: "var(--text-tertiary)", fontSize: "var(--font-size-xs)" }}>
                                     {t("version")}: {VERSION}
                                 </Typography>
-
-                                <Button
-                                    component={Link}
-                                    to="/immediate-ocr"
-                                    variant="text"
-                                    startIcon={<FlashOnIcon/>}
-                                    className="red-link"
-                                    sx={{
-                                        textTransform: "none",
-                                        padding: "var(--spacing-xs) var(--spacing-sm)",
-                                        borderRadius: "var(--radius-md)",
-                                        fontSize: "var(--font-size-sm)",
-                                        '&:hover': {
-                                            backgroundColor: "var(--card-hover-bg)",
-                                        },
-                                    }}
-                                >
-                                    {t("immediate ocr")}
-                                </Button>
 
                                 <Button
                                     variant="text"
@@ -534,6 +520,7 @@ function App() {
                     <Route index element={<WrappedForm />} />
                     <Route path="/space/:spaceId" element={<WrappedForm />} />
                     <Route path="/immediate-ocr" element={<ImmediateOCRPage />} />
+                    <Route path="/queue-status" element={<QueueStatusPage />} />
 
                     <Route element={<ProtectedRoute isAuthenticated={isAuthenticated}/>} >
                         <Route exact path="/admin" element={<AdminDashboard />} />

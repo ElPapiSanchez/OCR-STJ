@@ -69,14 +69,22 @@ def detect_text_mask_cv(
     win_size: int = 35,
     C: int = 10,
     morph_kernel: int = 3,
+    fast_mode: bool = False,  # New parameter for faster processing
 ) -> np.ndarray:
     """
     OpenCV-based text mask.
     img_rgb: HxWx3 RGB uint8 array.
     Returns: mask uint8 (0 background, 255 foreground).
+    fast_mode: If True, uses faster but slightly less accurate segmentation
     """
     gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
-    bg = cv2.GaussianBlur(gray, (0, 0), sigmaX=15, sigmaY=15)
+    
+    # Use faster blur in fast mode
+    if fast_mode:
+        bg = cv2.GaussianBlur(gray, (0, 0), sigmaX=8, sigmaY=8)  # Reduced from 15
+    else:
+        bg = cv2.GaussianBlur(gray, (0, 0), sigmaX=15, sigmaY=15)
+    
     norm = cv2.divide(gray, bg, scale=255)
     norm = cv2.normalize(norm, None, 0, 255, cv2.NORM_MINMAX)
 
@@ -87,13 +95,18 @@ def detect_text_mask_cv(
         norm, 255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
         cv2.THRESH_BINARY_INV,
-        75,
+        75 if not fast_mode else 51,  # Smaller window in fast mode
         10
     )
 
     nb_components, output, stats, centroids = cv2.connectedComponentsWithStats(th, connectivity=8)
     sizes = stats[1:, cv2.CC_STAT_AREA]
-    min_size = max(2, (img_rgb.shape[0] * img_rgb.shape[1]) // 200000)
+    
+    # Less strict filtering in fast mode
+    if fast_mode:
+        min_size = max(2, (img_rgb.shape[0] * img_rgb.shape[1]) // 100000)  # Half the strictness
+    else:
+        min_size = max(2, (img_rgb.shape[0] * img_rgb.shape[1]) // 200000)
 
     mask = np.zeros_like(th, dtype=np.uint8)
     for i, sz in enumerate(sizes):
@@ -112,6 +125,7 @@ def segment_page_to_mrc_components_cv(
     win_size: int = 35,
     C: int = 10,
     morph_kernel: int = 3,
+    fast_mode: bool = False,  # New parameter for faster processing
 ) -> Tuple[Image.Image, Image.Image, Image.Image]:
     """
     CV-based segmentation using detect_text_mask_cv for the mask.
@@ -119,18 +133,22 @@ def segment_page_to_mrc_components_cv(
       - bg_img: smooth colour background (RGB)
       - fg_img: colour foreground-only (RGB on white)
       - mask_img: binary mask (L, 0/255)
+    fast_mode: If True, uses faster but slightly less accurate segmentation
     """
     orig_rgb = pil_img.convert("RGB")
     img_np = np.asarray(orig_rgb, dtype=np.uint8)
 
-    mask_np = detect_text_mask_cv(img_np, win_size=win_size, C=C, morph_kernel=morph_kernel)
+    mask_np = detect_text_mask_cv(img_np, win_size=win_size, C=C, morph_kernel=morph_kernel, fast_mode=fast_mode)
     mask_np = np.where(mask_np > 0, 255, 0).astype(np.uint8)
     mask_final = mask_np > 0
 
     mask_img = Image.fromarray(mask_np, mode="L")
 
-    # Background: blurred RGB original
-    bg_img = orig_rgb.filter(ImageFilter.GaussianBlur(radius=5))
+    # Background: blurred RGB original (faster blur in fast mode)
+    if fast_mode:
+        bg_img = orig_rgb.filter(ImageFilter.GaussianBlur(radius=3))  # Reduced from 5
+    else:
+        bg_img = orig_rgb.filter(ImageFilter.GaussianBlur(radius=5))
 
     # Foreground: (keep original RGB; mask is used as soft-mask in PDF)
     fg_arr = img_np.copy()
@@ -221,6 +239,7 @@ def mrc_pdf_from_bytes(
     cv_morph_kernel: int = 3,
     flatten_to_jpeg: bool = False,
     flatten_quality: int = 85,
+    fast_mode: bool = False,  # New parameter for faster processing
     progress_callback: Optional[callable] = None
 ) -> bytes:
     """
@@ -328,7 +347,7 @@ def mrc_pdf_from_bytes(
                 morph_kernel=cv_morph_kernel,
             )
             bg_full, fg_full, mask_full = segment_page_to_mrc_components_cv(
-                pil_page, win_size=win_s, C=C_s, morph_kernel=mk_s
+                pil_page, win_size=win_s, C=C_s, morph_kernel=mk_s, fast_mode=fast_mode
             )
         elif mask_method == "pil":
             bg_full, fg_full, mask_full = segment_page_to_mrc_components_pil(pil_page)
@@ -350,18 +369,20 @@ def mrc_pdf_from_bytes(
 
             sy = h_px_orig / new_size[1]
             sx = w_px_orig / new_size[0]
-            out = np.zeros((new_size[1], new_size[0]), dtype=np.uint8)
+            
+            
+            
+            
+            # Fast vectorized mask downsampling using OpenCV (much faster than Python loops)
+            mask_np = np.asarray(mask_full, dtype=np.uint8)
+            mask_resized = cv2.resize(
+                mask_np, 
+                new_size, 
+                interpolation=cv2.INTER_AREA  # INTER_AREA = block averaging, perfect for downsampling
+            )
+            # Threshold to binary (>127 = foreground)
+            mask_img = Image.fromarray(np.where(mask_resized > 127, 255, 0).astype(np.uint8), mode="L")
 
-            for y in range(new_size[1]):
-                y0 = int(y * sy)
-                y1 = int((y + 1) * sy)
-                for x in range(new_size[0]):
-                    x0 = int(x * sx)
-                    x1 = int((x + 1) * sx)
-                    block = mask_np[y0:y1, x0:x1]
-                    out[y, x] = 255 if block.mean() > 0.5 else 0
-
-            mask_img = Image.fromarray(out, mode="L")
         else:
             bg_img, fg_img, mask_img = bg_full, fg_full, mask_full
 
@@ -430,12 +451,23 @@ def mrc_pdf_from_bytes(
                 with open(os.path.join(output_components_dir, f"{tag}_mask.png"), "wb") as f:
                     f.write(mask_bytes)
 
-            page.insert_image(rect, stream=bg_bytes, overlay=False)
-            page.insert_image(rect, stream=fg_bytes, mask=mask_bytes, overlay=True)
+        page.insert_image(rect, stream=bg_bytes, overlay=False)
+        page.insert_image(rect, stream=fg_bytes, mask=mask_bytes, overlay=True)
         
         # Explicit cleanup to free memory after each page (prevents OOM on large documents)
         import gc
-        del bg_full, fg_full, mask_full, bg_img, fg_img, mask_img, bg_bytes, fg_bytes, mask_bytes, pil_page
+        # Clear all page-related objects
+        del bg_full, fg_full, mask_full, bg_img, fg_img, mask_img, pil_page
+        if 'bg_bytes' in locals():
+            del bg_bytes
+        if 'fg_bytes' in locals():
+            del fg_bytes
+        if 'mask_bytes' in locals():
+            del mask_bytes
+        if 'flat_img' in locals():
+            del flat_img
+        if 'flat_bytes' in locals():
+            del flat_bytes
         gc.collect()
 
     print(f"   🔨 Finalizing PDF (optimizing and deflating)...")

@@ -24,10 +24,9 @@ export const tesseractOutputsList = () => [
     { value: "xml", description: i18next.t("output.xml") },
 ];
 
-export const defaultEngine = "pytesseract";
+export const defaultEngine = "tesserocr";
 export const engineList = () => [
-    { value: "pytesseract", description: i18next.t("engine.pytesseract") },
-    { value: "tesserOCR", description: i18next.t("engine.tesserOCR") },
+    { value: "tesserocr", description: i18next.t("engine.tesserOCR") },
 ];
 
 export const defaultEngineMode = 3;

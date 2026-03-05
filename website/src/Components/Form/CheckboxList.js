@@ -45,13 +45,14 @@ function CheckboxList(
             error={error}
             component="fieldset"
             variant="standard"
+            sx={{ overflow: 'visible' }}
         >
             <FormLabel component="legend">{title}</FormLabel>
-            <FormGroup>
+            <FormGroup sx={{ overflow: 'visible' }}>
                 {options.map((option, index) => {
                     const order = showOrder ? checked.indexOf(option.value)+1 : -1;
                     return (
-                    <Box style={{position: "relative"}}>
+                    <Box key={index} style={{position: "relative", overflow: "visible"}}>
                         {order > 0
                             ? <span style={{position: "absolute", left: "-2em", bottom: "0.7em"}}>
                                 {order}º&nbsp;

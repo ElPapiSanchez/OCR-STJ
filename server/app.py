@@ -966,10 +966,10 @@ def sync_inputs():
                         "extension": extension if extension in ALLOWED_EXTENSIONS else "other",
                         "stored": 0.00,
                         "creation": get_current_time(),
-                        "status": {
-                            "stage": "uploading",
-                            "message": "A preparar ficheiro...",
-                        },
+                "status": {
+                    "stage": "uploading",
+                    "message": "A preparar ficheiro...",
+                },
                     },
                     f,
                     indent=2,
@@ -1626,6 +1626,10 @@ def api_perform_ocr():
     file = request.files["file"]
     config = request.form.get("config", None)
     
+    # Get compression settings (can be sent separately when using presets)
+    compress_override = request.form.get("compress", None)
+    compression_quality_override = request.form.get("compressionQuality", None)
+    
     # Handle config parameter: can be preset name (string), JSON string (dict), or None
     if config is not None and config != "":
         # Try to parse as JSON first (for dict configs)
@@ -1653,6 +1657,13 @@ def api_perform_ocr():
     else:
         config = None
 
+    # Apply compression overrides if provided (from UI controls)
+    if config is not None and isinstance(config, dict):
+        if compress_override is not None:
+            config["compress"] = compress_override.lower() == "true"
+        if compression_quality_override is not None:
+            config["compressionQuality"] = compression_quality_override
+
     doc_id = generate_random_uuid()[:9]
     doc_path = f"{API_TEMP_PATH}/{doc_id}"
     extension = file.filename.split(".")[-1]
@@ -1663,6 +1674,7 @@ def api_perform_ocr():
             {
                 "type": "file",
                 "creation": get_current_time(),
+                "original_filename": file.filename,
                 "extension": (
                     extension if extension.lower() in ALLOWED_EXTENSIONS else "other"
                 ),
@@ -1726,8 +1738,20 @@ def api_get_result():
     if not data.get(type, {}).get("complete", False):
         abort(HTTPStatus.NOT_FOUND)
 
+    file_extension = RESULT_TYPE_TO_EXTENSION[type]
+    internal_filename = f"_export/_{type}.{file_extension}"
+    
+    # Get original filename from metadata, use doc_id as fallback
+    original_name = data.get("original_filename", doc_id)
+    # Remove extension from original name if present
+    if "." in original_name:
+        original_name = original_name.rsplit(".", 1)[0]
+    
+    # Create download filename with original name + type suffix + extension
+    download_filename = f"{original_name}_{type}.{file_extension}"
+
     return send_from_directory(
-        doc_path, f"_export/_{type}.{RESULT_TYPE_TO_EXTENSION[type]}"
+        doc_path, internal_filename, as_attachment=True, download_name=download_filename
     )
 
 
@@ -2039,6 +2063,89 @@ def delete_ocr_config():
 
     os.remove(config_path)
     return {"success": True, "message": "Configuração apagada."}
+
+
+@app.route("/queue-status", methods=["GET"])
+def get_queue_status():
+    """
+    Get current queue status for OCR tasks.
+    Returns information about active, scheduled, and reserved tasks.
+    """
+    try:
+        from celery import current_app
+        
+        # Get Celery inspect instance
+        inspect = celery.control.inspect()
+        
+        # Get active tasks (currently being processed)
+        active_tasks = inspect.active()
+        
+        # Get reserved tasks (queued, waiting to be processed)
+        reserved_tasks = inspect.reserved()
+        
+        # Get scheduled tasks (delayed/scheduled for future)
+        scheduled_tasks = inspect.scheduled()
+        
+        # Count tasks by type
+        def count_tasks_by_name(tasks_dict):
+            counts = {}
+            total = 0
+            if tasks_dict:
+                for worker, task_list in tasks_dict.items():
+                    for task in task_list:
+                        task_name = task.get('name', 'unknown')
+                        counts[task_name] = counts.get(task_name, 0) + 1
+                        total += 1
+            return counts, total
+        
+        active_counts, active_total = count_tasks_by_name(active_tasks)
+        reserved_counts, reserved_total = count_tasks_by_name(reserved_tasks)
+        scheduled_counts, scheduled_total = count_tasks_by_name(scheduled_tasks)
+        
+        # Get worker stats
+        stats = inspect.stats()
+        worker_info = []
+        if stats:
+            for worker_name, worker_stats in stats.items():
+                worker_info.append({
+                    'name': worker_name,
+                    'pool': worker_stats.get('pool', {}).get('implementation', 'unknown'),
+                    'max_concurrency': worker_stats.get('pool', {}).get('max-concurrency', 0),
+                })
+        
+        return {
+            'success': True,
+            'queue': {
+                'active': {
+                    'total': active_total,
+                    'by_task': active_counts,
+                },
+                'reserved': {
+                    'total': reserved_total,
+                    'by_task': reserved_counts,
+                },
+                'scheduled': {
+                    'total': scheduled_total,
+                    'by_task': scheduled_counts,
+                },
+            },
+            'workers': worker_info,
+            'total_pending': reserved_total + scheduled_total,
+        }
+    except Exception as e:
+        import logging as log
+        log.error(f"Error getting queue status: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'queue': {
+                'active': {'total': 0, 'by_task': {}},
+                'reserved': {'total': 0, 'by_task': {}},
+                'scheduled': {'total': 0, 'by_task': {}},
+            },
+            'workers': [],
+            'total_pending': 0,
+        }
 
 
 @app.route("/admin/flower/", defaults={"fullpath": ""}, methods=["GET", "POST"])

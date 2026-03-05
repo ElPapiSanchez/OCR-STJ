@@ -36,6 +36,7 @@ import ConfirmActionPopup from 'Components/Form/ConfirmActionPopup';
 import CheckboxList from 'Components/Form/CheckboxList';
 import Footer from 'Components/Footer/Footer';
 import TooltipIcon from "Components/TooltipIcon/TooltipIcon";
+import InfoTooltip from 'Components/Form/InfoTooltip';
 
 const API_URL = `${window.location.protocol}//${window.location.host}/${process.env.REACT_APP_API_URL}`;
 const ADMIN_HOME = (process.env.REACT_APP_BASENAME !== null && process.env.REACT_APP_BASENAME !== "")
@@ -656,21 +657,19 @@ const ConfigManager = (props) => {
                 <Box sx={{
                     display: 'flex',
                     flexDirection: 'column',
+                    maxHeight: '65vh',
+                    overflowY: 'auto',
+                    overflowX: 'visible',
+                    paddingRight: '1.5rem',
+                    paddingLeft: '3rem',
                 }}>
-                    <CheckboxList title={t("output formats")}
-                                  options={outputOptions}
-                                  checked={outputs}
-                                  onChangeCallback={(checked) => setOutputList(checked)}
-                                  required={configName === "default"}
-                                  errorText={t("admin.select_at_least_one_output")}
-                    />
-                </Box>
-
-                <Box sx={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                }}>
-                    <CheckboxList title={t("language")}
+                    <Box sx={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
+                        <Typography component="legend" sx={{ fontWeight: 500 }}>
+                            {t("language")}
+                        </Typography>
+                        <InfoTooltip title={t("ocr_help.language")} />
+                    </Box>
+                    <CheckboxList title=""
                                   options={langOptions}
                                   checked={lang}
                                   onChangeCallback={(checked) => setLangList(checked)}
@@ -685,21 +684,31 @@ const ConfigManager = (props) => {
                     display: 'flex',
                     flexDirection: 'column',
                     width: '30%',
+                    maxHeight: '65vh',
+                    overflowY: 'auto',
+                    overflowX: 'visible',
+                    paddingRight: '1rem',
+                    paddingLeft: '0.5rem',
                 }}>
-                    <TextField
-                        label={t("dpi")}
-                        slotProps={{htmlInput: { inputMode: "numeric", pattern: "[1-9][0-9]*" }}}
-                        error={!validDpiVal}
-                        value={dpiVal}
-                        onChange={(e) => changeDpi(e.target.value)}
-                        variant='outlined'
-                        size="small"
-                        className="simpleInput"
-                        sx={{
-                            "& input:focus:invalid + fieldset": {borderColor: "red", borderWidth: 2}
-                        }}
-                    />
+                    <Box sx={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
+                        <TextField
+                            label={t("dpi")}
+                            slotProps={{htmlInput: { inputMode: "numeric", pattern: "[1-9][0-9]*" }}}
+                            error={!validDpiVal}
+                            value={dpiVal}
+                            onChange={(e) => changeDpi(e.target.value)}
+                            variant='outlined'
+                            size="small"
+                            className="simpleInput"
+                            sx={{
+                                "& input:focus:invalid + fieldset": {borderColor: "red", borderWidth: 2},
+                                flexGrow: 1,
+                            }}
+                        />
+                        <InfoTooltip title={t("ocr_help.dpi")} />
+                    </Box>
 
+                    {/* Engine selector hidden - only TesserOCR is available
                     <FormControl
                         required={configName === "default"}
                         error={!validEngine || (configName === "default" && engine === "")}
@@ -722,13 +731,17 @@ const ConfigManager = (props) => {
                             }
                         </RadioGroup>
                     </FormControl>
+                    */}
 
                     <FormControl
                         required={configName === "default"}
                         error={!validEngineMode || (configName === "default" && engineMode === -1)}
                         className="simpleDropdown borderTop"
                     >
-                        <FormLabel id="label-engine-type-select">{t("engine mode")}</FormLabel>
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <FormLabel id="label-engine-type-select">{t("engine mode")}</FormLabel>
+                            <InfoTooltip title={t("ocr_help.engine_mode")} />
+                        </Box>
                         <RadioGroup
                             aria-labelledby="label-engine-type-select"
                             value={engineMode}
@@ -746,7 +759,10 @@ const ConfigManager = (props) => {
                         error={!validSegmentMode || (configName === "default" && segmentMode === -1)}
                         className="simpleDropdown borderTop"
                     >
-                        <FormLabel id="label-segmentation-select">{t("segmentation")}</FormLabel>
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <FormLabel id="label-segmentation-select">{t("segmentation")}</FormLabel>
+                            <InfoTooltip title={t("ocr_help.segmentation")} />
+                        </Box>
                         <RadioGroup
                             aria-labelledby="label-segmentation-select"
                             value={segmentMode}
@@ -764,7 +780,10 @@ const ConfigManager = (props) => {
                         error={!validThresholdMethod || (configName === "default" && thresholdMethod === -1)}
                         className="simpleDropdown borderTop"
                     >
-                        <FormLabel id="label-thresholding-select">{t("thresholding")}</FormLabel>
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <FormLabel id="label-thresholding-select">{t("thresholding")}</FormLabel>
+                            <InfoTooltip title={t("ocr_help.thresholding")} />
+                        </Box>
                         <RadioGroup
                             aria-labelledby="label-thresholding-select"
                             value={thresholdMethod}
@@ -777,16 +796,42 @@ const ConfigManager = (props) => {
                         </RadioGroup>
                     </FormControl>
 
-                    <TextField
-                        label={t("additional parameters")}
-                        value={otherParams}
-                        onChange={(e) => changeAdditionalParams(e.target.value)}
-                        variant='outlined'
-                        className="simpleInput borderTop"
-                        size="small"
-                        slotProps={{
-                            inputLabel: {sx: {top: "0.5rem"}}
-                        }}
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', marginTop: '1rem' }}>
+                        <TextField
+                            label={t("additional parameters")}
+                            value={otherParams}
+                            onChange={(e) => changeAdditionalParams(e.target.value)}
+                            variant='outlined'
+                            className="simpleInput borderTop"
+                            size="small"
+                            slotProps={{inputLabel: {sx: {top: "0.5rem"}}}}
+                            sx={{ flexGrow: 1 }}
+                        />
+                        <InfoTooltip title={t("ocr_help.additional_params")} />
+                    </Box>
+                </Box>
+
+                <Box sx={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    maxHeight: '65vh',
+                    overflowY: 'auto',
+                    overflowX: 'visible',
+                    paddingRight: '1.5rem',
+                    paddingLeft: '1rem',
+                }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
+                        <Typography component="legend" sx={{ fontWeight: 500 }}>
+                            {t("output formats")}
+                        </Typography>
+                        <InfoTooltip title={t("ocr_help.output_formats")} />
+                    </Box>
+                    <CheckboxList title=""
+                                  options={outputOptions}
+                                  checked={outputs}
+                                  onChangeCallback={(checked) => setOutputList(checked)}
+                                  required={configName === "default"}
+                                  errorText={t("admin.select_at_least_one_output")}
                     />
                 </Box>
             </Box>

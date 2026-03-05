@@ -55,6 +55,7 @@ def export_file(
     already_temp=False,
     get_csv=False,
     compress=True,
+    compression_quality='auto',
 ):
     """
     Direct to the correct function based on the filetype.
@@ -68,6 +69,7 @@ def export_file(
     :param simple: for a PDF, whether it should be simple, rather than with index
     :param get_csv: for a PDF, whether a CSV should be generated additionally
     :param compress: for a PDF, whether to apply MRC compression
+    :param compression_quality: compression quality mode ('auto', 'fast', 'high')
     """
     # Calculate outputs_path if not provided (for backward compatibility)
     if outputs_path is None:
@@ -92,6 +94,7 @@ def export_file(
             already_temp=already_temp,
             get_csv=get_csv,
             compress=compress,
+            compression_quality=compression_quality,
         )
 
     func = globals()[f"export_{filetype}"]
@@ -113,6 +116,7 @@ def export_file(
     # Add compress parameter for PDF exports
     if filetype == 'pdf':
         kwargs['compress'] = compress
+        kwargs['compression_quality'] = compression_quality
         log.info(f"export_file adding compress to kwargs: {compress} (type: {type(compress)})")
 
     return func(files_path, **kwargs)
@@ -324,6 +328,7 @@ def export_pdf(
     already_temp=False,
     get_csv=False,
     compress=True,
+    compression_quality='auto',
 ):
     """
     Export the file as a .pdf file.
@@ -337,8 +342,9 @@ def export_pdf(
     :param already_temp: temporary images already exist
     :param get_csv: also generate CSV index
     :param compress: apply MRC compression to reduce PDF file size
+    :param compression_quality: compression quality mode ('auto', 'fast', 'high')
     """
-    log.info(f"export_pdf called with compress={compress} (type: {type(compress)}), simple={simple}, files_path={files_path}")
+    log.info(f"export_pdf called with compress={compress} (type: {type(compress)}), compression_quality={compression_quality}, simple={simple}, files_path={files_path}")
     
     # Calculate outputs_path if not provided
     if outputs_path is None:
@@ -641,16 +647,39 @@ def export_pdf(
                 import time
                 start_time = time.time()
                 
+                # Determine render DPI and fast mode based on user's compression quality choice and file size
+                if compression_quality == 'high':
+                    # High quality mode: always use best settings
+                    adaptive_render_dpi = 300
+                    use_fast_mode = False
+                elif compression_quality == 'fast':
+                    # Fast mode: always use fast settings
+                    adaptive_render_dpi = 150
+                    use_fast_mode = True
+                else:  # 'auto' or default
+                    # Auto mode: adaptive based on file size
+                    if original_size < 5 * 1024 * 1024:  # < 5MB
+                        adaptive_render_dpi = 300
+                        use_fast_mode = False
+                    elif original_size < 20 * 1024 * 1024:  # < 20MB
+                        adaptive_render_dpi = 150
+                        use_fast_mode = True
+                    else:  # >= 20MB
+                        adaptive_render_dpi = OUT_DEFAULT_DPI
+                        use_fast_mode = True
+                
                 compressed_pdf_bytes = mrc_pdf_from_path(
                     input_path=target,
                     target_dpi=OUT_DEFAULT_DPI,
-                    render_dpi=600,  # Original value - may cause OOM on large TIFFs
+                    render_dpi=adaptive_render_dpi,  # Adaptive DPI to prevent OOM
                     output_pdf_path=target,  # Overwrite the original
                     bg_format="JPEG",
                     fg_format="JPEG",
                     bg_quality=40,  # Background quality (lower = smaller size)
                     fg_quality=80,  # Foreground quality (higher for text clarity)
                     mask_method="cv",  # Use CV method for better text detection
+                    flatten_to_jpeg=use_fast_mode,  # Use fast flattening for larger files
+                    fast_mode=use_fast_mode,  # Enable fast mode for larger files
                     progress_callback=compression_progress_callback,
                 )
                 
@@ -660,7 +689,7 @@ def export_pdf(
                 compression_ratio = (1 - compressed_size / original_size) * 100 if original_size > 0 else 0
                 
                 print(f"\n✅ COMPRESSION COMPLETE!")
-                print(f"Render_dpi: 600")
+                print(f"Render DPI: {adaptive_render_dpi} (adaptive based on file size)")
                 print(f"📊 Compressed size: {size_to_units(compressed_size)} ({compressed_size:,} bytes)")
                 print(f"💾 Space saved: {size_to_units(original_size - compressed_size)} ({compression_ratio:.1f}% reduction)")
                 print(f"⏱️  Compression time: {compression_time:.2f} seconds")

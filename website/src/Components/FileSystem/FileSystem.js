@@ -1,6 +1,7 @@
 import React from 'react';
 import axios from 'axios';
 import dayjs from 'dayjs';
+import { Link } from 'react-router';
 
 import { withTranslation } from "react-i18next";
 
@@ -20,6 +21,7 @@ import CreateNewFolderIcon from "@mui/icons-material/CreateNewFolder";
 import LockIcon from "@mui/icons-material/Lock";
 import NoteAddIcon from "@mui/icons-material/NoteAdd";
 import SyncIcon from "@mui/icons-material/Sync";
+import FlashOnIcon from '@mui/icons-material/FlashOn';
 import GridViewIcon from '@mui/icons-material/GridView';
 import ViewListIcon from '@mui/icons-material/ViewList';
 import IconButton from '@mui/material/IconButton';
@@ -1405,36 +1407,37 @@ class FileExplorer extends React.Component {
                                             )}
                                         </Box>
 
-                                        {this.props.spaceId
-                                            ? <Button
+                                        <Box sx={{display: "flex", flexDirection: "row", gap: "0.5rem", marginLeft: "auto"}}>
+                                            <Button
+                                                component={Link}
+                                                to="/immediate-ocr"
                                                 variant="contained"
-                                                startIcon={<LockIcon/>}
-                                                onClick={() => this.props.leavePrivateSpace()}
+                                                startIcon={<FlashOnIcon/>}
                                                 className="menuButton"
-                                                color="error"
-                                                sx={{
-                                                    marginLeft: "1rem",
-                                                    marginTop: "auto",
-                                                    marginBottom: "auto",
-                                                    marginRight: "0.5rem",
-                                                }}
                                             >
-                                                {this.props.t("leave space")}
+                                                {this.props.t("immediate ocr")}
                                             </Button>
-                                            : <Button
-                                                variant="contained"
-                                                startIcon={<LockIcon/>}
-                                                onClick={() => this.props.createPrivateSpace()}
-                                                className="menuButton"
-                                                sx={{
-                                                    marginLeft: "1rem",
-                                                    marginTop: "auto",
-                                                    marginBottom: "auto"
-                                                }}
-                                            >
-                                                {this.props.t("private space")}
-                                            </Button>
-                                        }
+
+                                            {this.props.spaceId
+                                                ? <Button
+                                                    variant="contained"
+                                                    startIcon={<LockIcon/>}
+                                                    onClick={() => this.props.leavePrivateSpace()}
+                                                    className="menuButton"
+                                                    color="error"
+                                                >
+                                                    {this.props.t("leave space")}
+                                                </Button>
+                                                : <Button
+                                                    variant="contained"
+                                                    startIcon={<LockIcon/>}
+                                                    onClick={() => this.props.createPrivateSpace()}
+                                                    className="menuButton"
+                                                >
+                                                    {this.props.t("private space")}
+                                                </Button>
+                                            }
+                                        </Box>
                                     </Box>
 
                                     <Box

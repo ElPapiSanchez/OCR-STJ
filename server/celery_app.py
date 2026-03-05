@@ -178,7 +178,7 @@ def task_auto_segment(path, use_hdbscan=False):
 
 
 @celery.task(name="export_file", priority=2)
-def task_export(files_path, filetype, outputs_path=None, inputs_path=None, delimiter=False, force_recreate=False, simple=False, compress=True):
+def task_export(files_path, filetype, outputs_path=None, inputs_path=None, delimiter=False, force_recreate=False, simple=False, compress=True, compression_quality='auto'):
     """
     Export a file to a specific format.
 
@@ -190,6 +190,7 @@ def task_export(files_path, filetype, outputs_path=None, inputs_path=None, delim
     :param force_recreate: force recreation of existing files
     :param simple: for PDF, create simple version without index
     :param compress: for PDF, whether to apply compression
+    :param compression_quality: compression quality mode ('auto', 'fast', 'high')
     """
     # Calculate outputs_path if not provided
     if outputs_path is None:
@@ -197,7 +198,7 @@ def task_export(files_path, filetype, outputs_path=None, inputs_path=None, delim
         outputs_path = f"{OUTPUTS_PATH}/{relative_path}"
 
     return export_file(files_path, filetype, outputs_path=outputs_path, inputs_path=inputs_path,
-                       delimiter=delimiter, force_recreate=force_recreate, simple=simple, compress=compress)
+                       delimiter=delimiter, force_recreate=force_recreate, simple=simple, compress=compress, compression_quality=compression_quality)
 
 
 @celery.task(name="make_changes", priority=2)
@@ -235,9 +236,11 @@ def task_make_changes(files_path, outputs_path, data):
     # Handle both dict config and "default" string
     if isinstance(config, dict):
         compress_value = config.get("compress")
+        compression_quality = config.get("compressionQuality", "auto")
     else:
         # Config is "default" string or something else
         compress_value = None
+        compression_quality = "auto"
     
     compress_pdf = True if compress_value is None else bool(compress_value)
 
@@ -314,6 +317,7 @@ def task_make_changes(files_path, outputs_path, data):
             keep_temp=data["pdf"]["complete"],
             get_csv=recreate_csv,
             compress=compress_pdf,
+            compression_quality=compression_quality,
         )
 
         exported_pdf = pdfium.PdfDocument(
@@ -351,6 +355,7 @@ def task_make_changes(files_path, outputs_path, data):
             already_temp=data["pdf_indexed"]["complete"],
             get_csv=recreate_csv,
             compress=compress_pdf,
+            compression_quality=compression_quality,
         )
         data["pdf"] = {
             "complete": True,
@@ -849,6 +854,7 @@ def task_file_ocr(
     try:
         with open(DEFAULT_CONFIG_FILE) as f:
             default_config = json.load(f)
+        
         if (
             not config
             or config == "{}"
@@ -914,6 +920,7 @@ def task_file_ocr(
 
         # Update the information related to the OCR
         data = get_data(data_file)
+        
         data["ocr"] = {
             "config": config,
             "progress": 0,
@@ -1414,9 +1421,11 @@ def task_export_results(files_path: str = None, outputs_path: str = None, output
     # Handle both dict config and "default" string
     if isinstance(config, dict):
         compress_value = config.get("compress")
+        compression_quality = config.get("compressionQuality", "auto")
     else:
         # Config is "default" string or something else
         compress_value = None
+        compression_quality = "auto"
     
     compress_pdf = True if compress_value is None else bool(compress_value)
 
@@ -1529,6 +1538,7 @@ def task_export_results(files_path: str = None, outputs_path: str = None, output
                 keep_temp=keep_temp_images,
                 get_csv=("csv" in output_types),
                 compress=compress_pdf,
+                compression_quality=compression_quality,
             )
             creation_time = get_current_time()
             exported_pdf = pdfium.PdfDocument(
@@ -1574,6 +1584,7 @@ def task_export_results(files_path: str = None, outputs_path: str = None, output
                 already_temp=("pdf_indexed" in output_types),
                 get_csv=("csv" in output_types),
                 compress=compress_pdf,
+                compression_quality=compression_quality,
             )
             creation_time = get_current_time()
             data["pdf"] = {
