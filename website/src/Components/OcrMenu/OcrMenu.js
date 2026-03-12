@@ -57,7 +57,9 @@ class OcrMenu extends React.Component {
         this.state = {
             ...emptyConfig,
             compress: true,  // Ensure compress is always initialized
-            compressionQuality: 'auto',  // Add compression quality setting
+            compressionTargetDpi: 100,
+            compressionBgQuality: 40,
+            compressionFgQuality: 80,
             presetsList: [],
             presetName: "",
             defaultConfig: defaultConfig,
@@ -113,10 +115,6 @@ class OcrMenu extends React.Component {
                     if (initialConfig.compress === undefined || initialConfig.compress === null) {
                         initialConfig.compress = true;
                     }
-                    // Ensure compressionQuality is always set (default to 'auto' if missing)
-                    if (!initialConfig.compressionQuality) {
-                        initialConfig.compressionQuality = 'auto';
-                    }
                     this.setState({...initialConfig, defaultConfig: data, loaded: true, usingDefault: usingDefault});
                 } else {
                     this.setState({defaultConfig: data});
@@ -132,10 +130,6 @@ class OcrMenu extends React.Component {
                     // Ensure compress is always set (default to true if missing)
                     if (initialConfig.compress === undefined || initialConfig.compress === null) {
                         initialConfig.compress = true;
-                    }
-                    // Ensure compressionQuality is always set (default to 'auto' if missing)
-                    if (!initialConfig.compressionQuality) {
-                        initialConfig.compressionQuality = 'auto';
                     }
                     this.setState({...initialConfig, loaded: true, usingDefault: usingDefault});
                 }
@@ -190,10 +184,6 @@ class OcrMenu extends React.Component {
             }
         })
             .then(({ data }) => {
-                // Ensure compressionQuality is set
-                if (!data.compressionQuality) {
-                    data.compressionQuality = 'auto';
-                }
                 this.setState({
                     ...data,
                     presetName: name,
@@ -250,7 +240,10 @@ class OcrMenu extends React.Component {
             segmentMode: this.state.segmentMode,
             thresholdMethod: this.state.thresholdMethod,
             compress: this.state.compress !== undefined ? this.state.compress : true,
-            compressionQuality: this.state.compressionQuality || 'auto',
+            compressionTargetDpi: Number(this.state.compressionTargetDpi),
+            compressionBgQuality: Number(this.state.compressionBgQuality),
+            compressionFgQuality: Number(this.state.compressionFgQuality),
+            compressionFlattenToJpeg: true,  // Always flatten to JPEG
         }
         if (this.state.dpiVal !== null && this.state.dpiVal !== "") {
             config.dpi = this.state.dpiVal;
@@ -277,10 +270,10 @@ class OcrMenu extends React.Component {
             usingDefault: true,
             uncommittedChanges: this.props.customConfig != null,  // no changes if was already default
         };
-        // Ensure compressionQuality is set
-        if (!restoredConfig.compressionQuality) {
-            restoredConfig.compressionQuality = 'auto';
-        }
+        // Reset compression settings to defaults
+        restoredConfig.compressionTargetDpi = 100;
+        restoredConfig.compressionBgQuality = 40;
+        restoredConfig.compressionFgQuality = 80;
         this.setState(restoredConfig);
     }
 
@@ -314,10 +307,6 @@ class OcrMenu extends React.Component {
 
     changeCompress(value) {
         this.setState({ compress: value, usingDefault: false, uncommittedChanges: true });
-    }
-    
-    changeCompressionQuality(value) {
-        this.setState({ compressionQuality: value, usingDefault: false, uncommittedChanges: true });
     }
 
     changeThresholdingMethod(value) {
@@ -517,7 +506,6 @@ class OcrMenu extends React.Component {
                                   options={tesseractLangList()}
                                   checked={this.state.lang}
                                   onChangeCallback={this.setLangList}
-                                  required
                                   showOrder
                                   helperText={this.props.t("helper text language order")}
                                   errorText={this.props.t("error must select language")}/>
@@ -635,59 +623,6 @@ class OcrMenu extends React.Component {
                         />
                         <InfoTooltip title={this.props.t("ocr_help.additional_params")} />
                     </Box>
-
-                    <FormControl className="simpleDropdown borderTop" sx={{ paddingTop: '1rem' }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                            <FormControlLabel
-                                control={
-                                    <Switch
-                                        checked={this.state.compress !== undefined ? this.state.compress : true}
-                                        onChange={(e) => this.changeCompress(e.target.checked)}
-                                        color="primary"
-                                    />
-                                }
-                                label={this.props.t("compress pdf")}
-                            />
-                            <InfoTooltip title={this.props.t("ocr_help.compress_pdf")} />
-                        </Box>
-                        <Typography variant="caption" color="text.secondary" sx={{ ml: 2, mt: 0.5 }}>
-                            {this.props.t("compress pdf description")}
-                        </Typography>
-                        
-                        {/* Compression Quality Selector */}
-                        {(this.state.compress !== undefined ? this.state.compress : true) && (
-                            <Box sx={{ mt: 2, ml: 2 }}>
-                                <FormControl fullWidth size="small">
-                                    <InputLabel id="compression-quality-label">{this.props.t('compression quality')}</InputLabel>
-                                    <Select
-                                        labelId="compression-quality-label"
-                                        value={this.state.compressionQuality || 'auto'}
-                                        label={this.props.t('compression quality')}
-                                        onChange={(e) => this.changeCompressionQuality(e.target.value)}
-                                    >
-                                        <MenuItem value="auto">
-                                            <Box>
-                                                <Typography variant="body2">{this.props.t('compression auto')}</Typography>
-                                                <Typography variant="caption" color="text.secondary">{this.props.t('compression auto desc')}</Typography>
-                                            </Box>
-                                        </MenuItem>
-                                        <MenuItem value="fast">
-                                            <Box>
-                                                <Typography variant="body2">{this.props.t('compression fast')}</Typography>
-                                                <Typography variant="caption" color="text.secondary">{this.props.t('compression fast desc')}</Typography>
-                                            </Box>
-                                        </MenuItem>
-                                        <MenuItem value="high">
-                                            <Box>
-                                                <Typography variant="body2">{this.props.t('compression high quality')}</Typography>
-                                                <Typography variant="caption" color="text.secondary">{this.props.t('compression high quality desc')}</Typography>
-                                            </Box>
-                                        </MenuItem>
-                                    </Select>
-                                </FormControl>
-                            </Box>
-                        )}
-                    </FormControl>
                 </Box>
 
                 <Box sx={{
@@ -711,8 +646,71 @@ class OcrMenu extends React.Component {
                                   options={this.state.outputOptions}
                                   checked={this.state.outputs}
                                   onChangeCallback={this.setOutputList}
-                                  required
                                   errorText={this.props.t("error must select output")}/>
+                    
+                    {/* Compression Settings */}
+                    <FormControl className="simpleDropdown borderTop" sx={{ paddingTop: '1rem', mt: 2 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <FormControlLabel
+                                control={
+                                    <Switch
+                                        checked={this.state.compress !== undefined ? this.state.compress : true}
+                                        onChange={(e) => this.changeCompress(e.target.checked)}
+                                        color="primary"
+                                    />
+                                }
+                                label={this.props.t("compress pdf")}
+                            />
+                            <InfoTooltip title={this.props.t("ocr_help.compress_pdf")} />
+                        </Box>
+                        <Typography variant="caption" color="text.secondary" sx={{ ml: 2, mt: 0.5 }}>
+                            {this.props.t("compress pdf description")}
+                        </Typography>
+                        
+                        {/* Compression Settings */}
+                        {(this.state.compress !== undefined ? this.state.compress : true) && (
+                            <Box sx={{ mt: 2, ml: 2 }}>
+                                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                                    {this.props.t('compression settings')}
+                                </Typography>
+
+                                {/* Target DPI */}
+                                <TextField
+                                    label={this.props.t('compression target dpi')}
+                                    type="number"
+                                    size="small"
+                                    fullWidth
+                                    value={this.state.compressionTargetDpi}
+                                    onChange={(e) => this.setState({ compressionTargetDpi: e.target.value, usingDefault: false, uncommittedChanges: true })}
+                                    inputProps={{ min: 50, max: 300 }}
+                                    sx={{ mb: 1.5 }}
+                                />
+
+                                {/* Background Quality */}
+                                <TextField
+                                    label={this.props.t('compression bg quality')}
+                                    type="number"
+                                    size="small"
+                                    fullWidth
+                                    value={this.state.compressionBgQuality}
+                                    onChange={(e) => this.setState({ compressionBgQuality: e.target.value, usingDefault: false, uncommittedChanges: true })}
+                                    inputProps={{ min: 1, max: 100 }}
+                                    sx={{ mb: 1.5 }}
+                                />
+
+                                {/* Foreground Quality */}
+                                <TextField
+                                    label={this.props.t('compression fg quality')}
+                                    type="number"
+                                    size="small"
+                                    fullWidth
+                                    value={this.state.compressionFgQuality}
+                                    onChange={(e) => this.setState({ compressionFgQuality: e.target.value, usingDefault: false, uncommittedChanges: true })}
+                                    inputProps={{ min: 1, max: 100 }}
+                                />
+                            </Box>
+                        )}
+                    </FormControl>
                 </Box>
 
                 {/*

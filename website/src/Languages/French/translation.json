@@ -256,6 +256,11 @@
     "compressing pdf finalizing": "Compression du PDF - Finalisation...",
     "compressing pdf": "Compression du PDF",
     "compression complete": "Compression terminée",
+    "compression settings": "Paramètres de Compression",
+    "compression target dpi": "DPI Cible",
+    "compression bg quality": "Qualité de l'Arrière-plan (1-100)",
+    "compression fg quality": "Qualité du Texte (1-100)",
+    "compression flatten to jpeg": "Aplatir en Couche JPEG Unique",
     "error must select language": "Vous devez sélectionner au moins une langue",
     "error must select output": "Vous devez sélectionner au moins un format de sortie",
     "helper text language order": "Pour de meilleurs résultats, sélectionnez par ordre de pertinence",
@@ -266,6 +271,32 @@
     "success config saved": "Configuration OCR enregistrée avec succès.",
     "error config save unexpected": "Erreur inattendue lors de l'enregistrement de la configuration OCR.",
     "error config save failed": "Impossible d'enregistrer la configuration OCR.",
+    "queue": {
+        "title": "État de la File de Tâches",
+        "page_title": "État de la File",
+        "tooltip": "État de la File",
+        "view_details": "Cliquez pour voir les détails de la file",
+        "active": "actives",
+        "pending": "en attente",
+        "queued": "Tâches en File",
+        "scheduled": "Tâches Planifiées",
+        "workers": "Travailleurs",
+        "idle": "Inactif",
+        "error": "Erreur lors du chargement de l'état de la file",
+        "task_breakdown": "Répartition des Tâches",
+        "currently_processing": "Traitement en Cours",
+        "waiting_in_queue": "En Attente dans la File",
+        "scheduled_for_later": "Planifié pour Plus Tard",
+        "worker_details": "Détails des Travailleurs",
+        "task": {
+            "file_ocr": "OCR de Fichier",
+            "ocr_from_api": "OCR depuis API",
+            "page_ocr": "OCR de Page",
+            "export_file": "Exporter Fichier",
+            "prepare_file": "Préparer Fichier",
+            "auto_segment": "Segmentation Automatique"
+        }
+    },
     "ocr_help": {
         "language": "Sélectionnez la/les langue(s) présente(s) dans le document. Plusieurs langues peuvent être sélectionnées si le document contient des langues mixtes. L'ordre est important : listez d'abord la langue la plus répandue pour une meilleure précision.",
         "dpi": "Points par Pouce - définit la résolution de l'image numérisée. Des valeurs plus élevées (300-600) offrent une meilleure précision mais un traitement plus lent. Laissez vide pour utiliser la résolution native du document. Valeurs typiques : 150 (brouillon), 300 (standard), 600 (haute qualité).",
@@ -274,6 +305,10 @@
         "thresholding": "Méthode de binarisation d'image pour convertir les niveaux de gris en noir et blanc :\n• Otsu : Calcul automatique du seuil (recommandé pour la plupart des cas)\n• Leptonica : Implémentation alternative d'Otsu\n• Sauvola : Méthode adaptative, meilleure pour les documents dégradés avec fond variable",
         "additional_params": "Paramètres avancés de Tesseract au format 'clé=valeur'. Exemple : 'tessedit_char_whitelist=0123456789' pour reconnaître uniquement les chiffres. Consultez la documentation Tesseract pour les options disponibles.",
         "compress_pdf": "Applique une compression d'image pour réduire la taille du fichier PDF de 60-80% tout en préservant la précision du texte. Recommandé pour la plupart des documents. Désactivez uniquement si vous avez besoin de la qualité d'image originale ou si vous rencontrez des problèmes de traitement.",
+        "compression_target_dpi": "Résolution de sortie en Points par Pouce. Des valeurs plus basses (50-100) créent des fichiers plus petits avec une qualité acceptable pour le texte. Des valeurs plus élevées (150-300) préservent plus de détails mais augmentent la taille du fichier. Par défaut : 100 DPI.",
+        "compression_bg_quality": "Qualité JPEG pour l'arrière-plan/images du document (1-100). Des valeurs plus basses créent des fichiers plus petits. Recommandé : 30-50 pour les arrière-plans. Le texte n'est pas affecté.",
+        "compression_fg_quality": "Qualité JPEG pour la couche de texte/premier plan (1-100). Des valeurs plus élevées préservent la clarté du texte. Recommandé : 70-90 pour un texte lisible. Par défaut : 80.",
+        "compression_flatten": "Lorsqu'activé, combine toutes les couches en une seule image JPEG. Crée des PDF plus simples mais une compression moins efficace. Désactivez pour une meilleure compression (utilise MRC - Contenu Raster Mixte avec des couches séparées pour l'arrière-plan et le texte).",
         "output_formats": "Sélectionnez un ou plusieurs formats de sortie :\n• PDF avec index : PDF consultable avec coordonnées au niveau des mots\n• PDF avec texte : PDF consultable standard (recommandé)\n• Texte brut : Texte uniquement, sans formatage\n• Texte délimité par page : Texte avec séparateurs de page\n• CSV : Coordonnées des mots au format tableur\n• NER : Entités nommées (personnes, lieux, organisations)\n• hOCR/ALTO : Formats structurés avec informations détaillées de mise en page"
     }
 }

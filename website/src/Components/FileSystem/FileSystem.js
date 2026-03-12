@@ -122,6 +122,7 @@ class FileExplorer extends React.Component {
         this.deleteItem = this.deleteItem.bind(this);
         this.getOriginalFile = this.getOriginalFile.bind(this);
         this.getDocument = this.getDocument.bind(this);
+        this.getDocumentUncompressed = this.getDocumentUncompressed.bind(this);
         this.getEntities = this.getEntities.bind(this);
         this.requestEntities = this.requestEntities.bind(this);
         this.getImages = this.getImages.bind(this);
@@ -671,6 +672,27 @@ class FileExplorer extends React.Component {
         });
     }
 
+    getDocumentUncompressed(type, file, extension, suffix="") {
+        this.successNot.current.openNotif("A transferência do ficheiro começou, por favor aguarde");
+
+        let path = this.props.current_folder + '/' + file;
+        if (this.props._private) { path = this.props.spaceId + '/' + path }
+
+        fetch(API_URL + '/get_' + type + '?_private=' + this.props._private + '&path=' + encodeURIComponent(path), {
+            method: 'GET'
+        })
+        .then(response => {return response.blob()})
+        .then(data => {
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(data);
+
+            const basename = file.split('.').slice(0, -1).join('.');
+            a.download = basename + '_ocr' + suffix + '.' + extension;
+            a.click();
+            a.remove();
+        });
+    }
+
     getEntities(file) {
         this.successNot.current.openNotif("A transferência do ficheiro começou, por favor aguarde");
 
@@ -1035,6 +1057,7 @@ class FileExplorer extends React.Component {
                     enterDocument: this.enterFolder,
                     getOriginalFile: this.getOriginalFile,
                     getDocument: this.getDocument,
+                    getDocumentUncompressed: this.getDocumentUncompressed,
                     getEntities: this.getEntities,
                     requestEntities: this.requestEntities,
                     getImages: this.getImages,

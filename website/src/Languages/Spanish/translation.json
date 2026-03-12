@@ -256,6 +256,11 @@
     "compressing pdf finalizing": "Comprimiendo PDF - Finalizando...",
     "compressing pdf": "Comprimiendo PDF",
     "compression complete": "Compresión completa",
+    "compression settings": "Configuraciones de Compresión",
+    "compression target dpi": "DPI de Destino",
+    "compression bg quality": "Calidad del Fondo (1-100)",
+    "compression fg quality": "Calidad del Texto (1-100)",
+    "compression flatten to jpeg": "Aplanar a Capa JPEG Única",
     "error must select language": "Debe seleccionar al menos un idioma",
     "error must select output": "Debe seleccionar al menos un formato de salida",
     "helper text language order": "Para mejores resultados, seleccione en orden de relevancia",
@@ -266,6 +271,32 @@
     "success config saved": "Configuración de OCR guardada con éxito.",
     "error config save unexpected": "Error inesperado al guardar la configuración de OCR.",
     "error config save failed": "No se pudo guardar la configuración de OCR.",
+    "queue": {
+        "title": "Estado de la Cola de Tareas",
+        "page_title": "Estado de la Cola",
+        "tooltip": "Estado de la Cola",
+        "view_details": "Haga clic para ver detalles de la cola",
+        "active": "activas",
+        "pending": "en cola",
+        "queued": "Tareas en Cola",
+        "scheduled": "Tareas Programadas",
+        "workers": "Trabajadores",
+        "idle": "Inactivo",
+        "error": "Error al cargar el estado de la cola",
+        "task_breakdown": "Desglose de Tareas",
+        "currently_processing": "Procesando Actualmente",
+        "waiting_in_queue": "Esperando en Cola",
+        "scheduled_for_later": "Programadas para Más Tarde",
+        "worker_details": "Detalles de Trabajadores",
+        "task": {
+            "file_ocr": "OCR de Archivo",
+            "ocr_from_api": "OCR desde API",
+            "page_ocr": "OCR de Página",
+            "export_file": "Exportar Archivo",
+            "prepare_file": "Preparar Archivo",
+            "auto_segment": "Segmentación Automática"
+        }
+    },
     "ocr_help": {
         "language": "Seleccione el/los idioma(s) presente(s) en el documento. Se pueden seleccionar varios idiomas si el documento contiene idiomas mixtos. El orden importa: liste primero el idioma más prevalente para obtener la mejor precisión.",
         "dpi": "Puntos por Pulgada - define la resolución de la imagen escaneada. Valores más altos (300-600) proporcionan mejor precisión pero procesamiento más lento. Déjelo vacío para usar la resolución nativa del documento. Valores típicos: 150 (borrador), 300 (estándar), 600 (alta calidad).",
@@ -274,6 +305,10 @@
         "thresholding": "Método de binarización de imagen para convertir escala de grises a blanco y negro:\n• Otsu: Cálculo automático de umbral (recomendado para la mayoría de casos)\n• Leptonica: Implementación alternativa de Otsu\n• Sauvola: Método adaptativo, mejor para documentos degradados con fondo variable",
         "additional_params": "Parámetros avanzados de Tesseract en formato 'clave=valor'. Ejemplo: 'tessedit_char_whitelist=0123456789' para reconocer solo dígitos. Consulte la documentación de Tesseract para opciones disponibles.",
         "compress_pdf": "Aplica compresión de imagen para reducir el tamaño del archivo PDF en un 60-80% manteniendo la precisión del texto. Recomendado para la mayoría de documentos. Desactive solo si necesita calidad de imagen original o está experimentando problemas de procesamiento.",
+        "compression_target_dpi": "Resolución de salida en Puntos por Pulgada. Valores más bajos (50-100) crean archivos más pequeños con calidad aceptable para texto. Valores más altos (150-300) preservan más detalles pero aumentan el tamaño del archivo. Predeterminado: 100 DPI.",
+        "compression_bg_quality": "Calidad JPEG para fondo/imágenes del documento (1-100). Valores más bajos crean archivos más pequeños. Recomendado: 30-50 para fondos. El texto no se ve afectado.",
+        "compression_fg_quality": "Calidad JPEG para capa de texto/primer plano (1-100). Valores más altos preservan la claridad del texto. Recomendado: 70-90 para texto legible. Predeterminado: 80.",
+        "compression_flatten": "Cuando está habilitado, combina todas las capas en una sola imagen JPEG. Crea PDFs más simples pero compresión menos eficiente. Deshabilite para mejor compresión (usa MRC - Contenido Ráster Mixto con capas separadas de fondo y texto).",
         "output_formats": "Seleccione uno o más formatos de salida:\n• PDF con índice: PDF consultable con coordenadas a nivel de palabra\n• PDF con texto: PDF consultable estándar (recomendado)\n• Texto plano: Solo texto, sin formato\n• Texto delimitado por página: Texto con separadores de página\n• CSV: Coordenadas de palabras en formato de hoja de cálculo\n• NER: Entidades nombradas (personas, lugares, organizaciones)\n• hOCR/ALTO: Formatos estructurados con información detallada de diseño"
     }
 }

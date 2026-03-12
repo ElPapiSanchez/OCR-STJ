@@ -50,7 +50,9 @@ class DocumentRow extends React.Component {
         this.getDelimiterTxt = this.getDelimiterTxt.bind(this);
         this.getCSV = this.getCSV.bind(this);
         this.getPdfIndexed = this.getPdfIndexed.bind(this);
+        this.getPdfIndexedUncompressed = this.getPdfIndexedUncompressed.bind(this);
         this.getPdfSimple = this.getPdfSimple.bind(this);
+        this.getPdfSimpleUncompressed = this.getPdfSimpleUncompressed.bind(this);
         this.getEntities = this.getEntities.bind(this);
         this.getAlto = this.getAlto.bind(this);
         this.getHocr = this.getHocr.bind(this);
@@ -156,10 +158,24 @@ class DocumentRow extends React.Component {
     }
 
     /**
+     * Export the uncompressed .pdf indexed file
+     */
+    getPdfIndexedUncompressed(file) {
+        this.props.getDocumentUncompressed("pdf_indexed_uncompressed", file, "pdf", "_texto_indice_uncompressed");
+    }
+
+    /**
      * Export the .pdf file
      */
     getPdfSimple(file) {
         this.props.getDocument("pdf", file, "pdf", "_texto");
+    }
+
+    /**
+     * Export the uncompressed .pdf file
+     */
+    getPdfSimpleUncompressed(file) {
+        this.props.getDocumentUncompressed("pdf_uncompressed", file, "pdf", "_texto_uncompressed");
     }
 
     /**
@@ -581,9 +597,27 @@ class DocumentRow extends React.Component {
                         name={"PDF com texto e índice de palavras"}
                         filename={this.props.name}
                         type="pdf_indexed"
-                        info={info["pdf_indexed"]}
+                        info={{
+                            ...info["pdf_indexed"],
+                            size: info["pdf_indexed"]["compressed_size"] || info["pdf_indexed"]["size"]
+                        }}
                         fileIcon={<PdfIcon />}
                         downloadFile={this.getPdfIndexed}
+                    /> : null
+                }
+                {info["pdf_indexed"]?.complete && info["pdf_indexed"]["uncompressed_size"]
+                    ? <StaticFileRow
+                        key="pdf_indexed_uncompressed"
+                        expanded={this.state.expanded}
+                        name={"PDF com texto e índice (não comprimido)"}
+                        filename={this.props.name}
+                        type="pdf_indexed_uncompressed"
+                        info={{
+                            ...info["pdf_indexed"],
+                            size: info["pdf_indexed"]["uncompressed_size"]
+                        }}
+                        fileIcon={<PdfIcon />}
+                        downloadFile={this.getPdfIndexedUncompressed}
                     /> : null
                 }
                 {info["pdf"]?.complete
@@ -593,9 +627,27 @@ class DocumentRow extends React.Component {
                         name={"PDF com texto"}
                         filename={this.props.name}
                         type="pdf"
-                        info={info["pdf"]}
+                        info={{
+                            ...info["pdf"],
+                            size: info["pdf"]["compressed_size"] || info["pdf"]["size"]
+                        }}
                         fileIcon={<PdfIcon />}
                         downloadFile={this.getPdfSimple}
+                    /> : null
+                }
+                {info["pdf"]?.complete && info["pdf"]["uncompressed_size"]
+                    ? <StaticFileRow
+                        key="pdf_uncompressed"
+                        expanded={this.state.expanded}
+                        name={"PDF com texto (não comprimido)"}
+                        filename={this.props.name}
+                        type="pdf_uncompressed"
+                        info={{
+                            ...info["pdf"],
+                            size: info["pdf"]["uncompressed_size"]
+                        }}
+                        fileIcon={<PdfIcon />}
+                        downloadFile={this.getPdfSimpleUncompressed}
                     /> : null
                 }
                 {info["txt"]?.complete

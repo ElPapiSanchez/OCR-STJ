@@ -256,6 +256,11 @@
     "compression fast desc": "Faster processing, slightly lower quality (good for large files)",
     "compression high quality": "High Quality",
     "compression high quality desc": "Best quality, slower processing (good for small files)",
+    "compression settings": "Compression Settings",
+    "compression target dpi": "Target DPI",
+    "compression bg quality": "Background Quality (1-100)",
+    "compression fg quality": "Foreground Quality (1-100)",
+    "compression flatten to jpeg": "Flatten to Single JPEG Layer",
     "compressing pdf starting": "Compressing PDF - Starting...",
     "compressing pdf page": "Compressing PDF - Page {{current}}/{{total}}",
     "compressing pdf finalizing": "Compressing PDF - Finalizing...",
@@ -305,6 +310,10 @@
         "thresholding": "Image binarization method to convert grayscale to black-and-white:\n• Otsu: Automatic threshold calculation (recommended for most cases)\n• Leptonica: Alternative Otsu implementation\n• Sauvola: Adaptive method, better for degraded documents with varying background",
         "additional_params": "Advanced Tesseract parameters in 'key=value' format. Example: 'tessedit_char_whitelist=0123456789' to recognize only digits. Consult Tesseract documentation for available options.",
         "compress_pdf": "Applies image compression to reduce PDF file size by 60-80% while preserving text accuracy. Recommended for most documents. Disable only if you need original image quality or are experiencing processing issues.",
+        "compression_target_dpi": "Output resolution in Dots Per Inch. Lower values (50-100) create smaller files with acceptable quality for text. Higher values (150-300) preserve more detail but increase file size. Default: 100 DPI.",
+        "compression_bg_quality": "JPEG quality for document background/images (1-100). Lower values create smaller files. Recommended: 30-50 for backgrounds. Text remains unaffected.",
+        "compression_fg_quality": "JPEG quality for text/foreground layer (1-100). Higher values preserve text clarity. Recommended: 70-90 for readable text. Default: 80.",
+        "compression_flatten": "When enabled, combines all layers into a single JPEG image. Creates simpler PDFs but less efficient compression. Disable for best compression (uses MRC - Mixed Raster Content with separate background and text layers).",
         "output_formats": "Select one or more output formats:\n• PDF with index: Searchable PDF with word-level coordinates\n• PDF with text: Standard searchable PDF (recommended)\n• Plain text: Text only, no formatting\n• Page-delimited text: Text with page separators\n• CSV: Word coordinates in spreadsheet format\n• NER: Named entities (people, places, organizations)\n• hOCR/ALTO: Structured formats with detailed layout information"
     }
 }

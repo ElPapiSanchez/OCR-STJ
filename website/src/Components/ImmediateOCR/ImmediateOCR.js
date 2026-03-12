@@ -17,6 +17,8 @@ import FormControl from '@mui/material/FormControl';
 import InputLabel from '@mui/material/InputLabel';
 import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
+import TextField from '@mui/material/TextField';
+import Switch from '@mui/material/Switch';
 import Divider from '@mui/material/Divider';
 
 import HomeIcon from '@mui/icons-material/Home';
@@ -56,7 +58,9 @@ class ImmediateOCR extends React.Component {
             
             // Compression setting
             enableCompression: true,
-            compressionQuality: 'auto', // 'auto', 'fast', or 'high'
+            compressionTargetDpi: 100,
+            compressionBgQuality: 40,
+            compressionFgQuality: 80,
             
             // Processing state
             status: 'idle', // idle, uploading, processing, complete, error
@@ -69,6 +73,11 @@ class ImmediateOCR extends React.Component {
                 txt: false,
                 pdf: false,
                 pdf_indexed: false
+            },
+            resultSizes: {
+                txt: null,
+                pdf: { compressed: null, uncompressed: null },
+                pdf_indexed: { compressed: null, uncompressed: null }
             }
         };
         
@@ -128,7 +137,11 @@ class ImmediateOCR extends React.Component {
     }
     
     async processFile() {
-        const { uploadedFile, selectedLanguages, selectedPreset, outputFormats, enableCompression, compressionQuality } = this.state;
+        const { 
+            uploadedFile, selectedLanguages, selectedPreset, outputFormats, 
+            enableCompression,
+            compressionTargetDpi, compressionBgQuality, compressionFgQuality 
+        } = this.state;
         
         if (!uploadedFile) {
             this.setState({ errorMessage: this.props.t('no file uploaded') });
@@ -173,9 +186,8 @@ class ImmediateOCR extends React.Component {
                 formData.append('config', selectedPreset);
                 // Add compression settings that override preset
                 formData.append('compress', enableCompression);
-                formData.append('compressionQuality', compressionQuality);
             } else {
-                // Send complete config with all required fields
+                // Send complete config with all required fields including compression settings
                 const config = {
                     engine: "tesserocr",
                     lang: selectedLanguages,
@@ -184,7 +196,10 @@ class ImmediateOCR extends React.Component {
                     segmentMode: 3,
                     thresholdMethod: 0,
                     compress: enableCompression,
-                    compressionQuality: compressionQuality
+                    compressionTargetDpi: Number(compressionTargetDpi),
+                    compressionBgQuality: Number(compressionBgQuality),
+                    compressionFgQuality: Number(compressionFgQuality),
+                    compressionFlattenToJpeg: true  // Always flatten to JPEG
                 };
                 formData.append('config', JSON.stringify(config));
             }
@@ -301,6 +316,19 @@ class ImmediateOCR extends React.Component {
                 pdf_indexed: data.pdf_indexed?.complete || false
             };
             
+            // Get file sizes from response
+            const resultSizes = {
+                txt: data.txt?.size || null,
+                pdf: {
+                    compressed: data.pdf?.compressed_size || data.pdf?.size || null,
+                    uncompressed: data.pdf?.uncompressed_size || null
+                },
+                pdf_indexed: {
+                    compressed: data.pdf_indexed?.compressed_size || data.pdf_indexed?.size || null,
+                    uncompressed: data.pdf_indexed?.uncompressed_size || null
+                }
+            };
+            
             const allComplete = Object.entries(this.state.outputFormats)
                 .filter(([_, selected]) => selected)
                 .every(([format, _]) => resultsComplete[format]);
@@ -313,6 +341,7 @@ class ImmediateOCR extends React.Component {
                     status: 'complete',
                     progress: 100,
                     availableResults: resultsComplete,
+                    resultSizes: resultSizes,
                     statusMessage: this.props.t('ocr complete')
                 });
             } else if (stage === 'error') {
@@ -387,6 +416,11 @@ class ImmediateOCR extends React.Component {
                 txt: false,
                 pdf: false,
                 pdf_indexed: false
+            },
+            resultSizes: {
+                txt: null,
+                pdf: { compressed: null, uncompressed: null },
+                pdf_indexed: { compressed: null, uncompressed: null }
             }
         });
         
@@ -419,7 +453,8 @@ class ImmediateOCR extends React.Component {
             presetsList,
             outputFormats,
             enableCompression,
-            availableResults
+            availableResults,
+            resultSizes
         } = this.state;
         
         const isProcessing = status === 'processing' || status === 'uploading';
@@ -628,43 +663,47 @@ class ImmediateOCR extends React.Component {
                                 }
                             />
                             
-                            {/* Compression Quality Selector */}
+                            {/* Compression Settings */}
                             {enableCompression && (
                                 <Box sx={{ mt: 2, pl: 4 }}>
-                                    <FormControl fullWidth size="small">
-                                        <InputLabel id="compression-quality-label">{t('compression quality')}</InputLabel>
-                                        <Select
-                                            labelId="compression-quality-label"
-                                            value={this.state.compressionQuality}
-                                            label={t('compression quality')}
-                                            onChange={(e) => this.setState({ compressionQuality: e.target.value })}
-                                        >
-                                            <MenuItem value="auto">
-                                                <Box>
-                                                    <Typography variant="body2">{t('compression auto')}</Typography>
-                                                    <Typography variant="caption" color="text.secondary">
-                                                        {t('compression auto desc')}
-                                                    </Typography>
-                                                </Box>
-                                            </MenuItem>
-                                            <MenuItem value="fast">
-                                                <Box>
-                                                    <Typography variant="body2">{t('compression fast')}</Typography>
-                                                    <Typography variant="caption" color="text.secondary">
-                                                        {t('compression fast desc')}
-                                                    </Typography>
-                                                </Box>
-                                            </MenuItem>
-                                            <MenuItem value="high">
-                                                <Box>
-                                                    <Typography variant="body2">{t('compression high quality')}</Typography>
-                                                    <Typography variant="caption" color="text.secondary">
-                                                        {t('compression high quality desc')}
-                                                    </Typography>
-                                                </Box>
-                                            </MenuItem>
-                                        </Select>
-                                    </FormControl>
+                                    <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                                        {t('compression settings')}
+                                    </Typography>
+
+                                    {/* Target DPI */}
+                                    <TextField
+                                        label={t('compression target dpi')}
+                                        type="number"
+                                        size="small"
+                                        fullWidth
+                                        value={this.state.compressionTargetDpi}
+                                        onChange={(e) => this.setState({ compressionTargetDpi: e.target.value })}
+                                        inputProps={{ min: 50, max: 300 }}
+                                        sx={{ mb: 1.5 }}
+                                    />
+
+                                    {/* Background Quality */}
+                                    <TextField
+                                        label={t('compression bg quality')}
+                                        type="number"
+                                        size="small"
+                                        fullWidth
+                                        value={this.state.compressionBgQuality}
+                                        onChange={(e) => this.setState({ compressionBgQuality: e.target.value })}
+                                        inputProps={{ min: 1, max: 100 }}
+                                        sx={{ mb: 1.5 }}
+                                    />
+
+                                    {/* Foreground Quality */}
+                                    <TextField
+                                        label={t('compression fg quality')}
+                                        type="number"
+                                        size="small"
+                                        fullWidth
+                                        value={this.state.compressionFgQuality}
+                                        onChange={(e) => this.setState({ compressionFgQuality: e.target.value })}
+                                        inputProps={{ min: 1, max: 100 }}
+                                    />
                                 </Box>
                             )}
                         </Paper>
@@ -719,28 +758,58 @@ class ImmediateOCR extends React.Component {
                                             onClick={() => this.downloadResult('txt')}
                                             fullWidth
                                         >
-                                            {t('download text')}
+                                            {t('download text')} {resultSizes.txt && `(${resultSizes.txt})`}
                                         </Button>
                                     )}
                                     {availableResults.pdf && (
-                                        <Button
-                                            variant="contained"
-                                            startIcon={<DownloadIcon />}
-                                            onClick={() => this.downloadResult('pdf')}
-                                            fullWidth
-                                        >
-                                            {t('download pdf')} ({t('pdf simple')})
-                                        </Button>
+                                        <>
+                                            <Button
+                                                variant="contained"
+                                                startIcon={<DownloadIcon />}
+                                                onClick={() => this.downloadResult('pdf')}
+                                                fullWidth
+                                            >
+                                                {t('download pdf')} ({t('pdf simple')}) 
+                                                {resultSizes.pdf.compressed && ` - ${resultSizes.pdf.compressed}`}
+                                            </Button>
+                                            {enableCompression && resultSizes.pdf.uncompressed && (
+                                                <Button
+                                                    variant="outlined"
+                                                    startIcon={<DownloadIcon />}
+                                                    onClick={() => this.downloadResult('pdf_uncompressed')}
+                                                    fullWidth
+                                                    sx={{ ml: 2 }}
+                                                >
+                                                    {t('download pdf')} ({t('pdf simple')} - {t('uncompressed')})
+                                                    {` - ${resultSizes.pdf.uncompressed}`}
+                                                </Button>
+                                            )}
+                                        </>
                                     )}
                                     {availableResults.pdf_indexed && (
-                                        <Button
-                                            variant="contained"
-                                            startIcon={<DownloadIcon />}
-                                            onClick={() => this.downloadResult('pdf_indexed')}
-                                            fullWidth
-                                        >
-                                            {t('download pdf')} ({t('pdf searchable')})
-                                        </Button>
+                                        <>
+                                            <Button
+                                                variant="contained"
+                                                startIcon={<DownloadIcon />}
+                                                onClick={() => this.downloadResult('pdf_indexed')}
+                                                fullWidth
+                                            >
+                                                {t('download pdf')} ({t('pdf searchable')})
+                                                {resultSizes.pdf_indexed.compressed && ` - ${resultSizes.pdf_indexed.compressed}`}
+                                            </Button>
+                                            {enableCompression && resultSizes.pdf_indexed.uncompressed && (
+                                                <Button
+                                                    variant="outlined"
+                                                    startIcon={<DownloadIcon />}
+                                                    onClick={() => this.downloadResult('pdf_indexed_uncompressed')}
+                                                    fullWidth
+                                                    sx={{ ml: 2 }}
+                                                >
+                                                    {t('download pdf')} ({t('pdf searchable')} - {t('uncompressed')})
+                                                    {` - ${resultSizes.pdf_indexed.uncompressed}`}
+                                                </Button>
+                                            )}
+                                        </>
                                     )}
                                     
                                     <Divider sx={{ my: 1 }} />

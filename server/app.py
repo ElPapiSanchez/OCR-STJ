@@ -141,7 +141,9 @@ lock_system = dict()
 
 RESULT_TYPE_TO_EXTENSION = {
     "pdf_indexed": "pdf",
+    "pdf_indexed_uncompressed": "pdf",
     "pdf": "pdf",
+    "pdf_uncompressed": "pdf",
     "txt": "txt",
     "txt_delimited": "txt",
     "csv": "csv",
@@ -526,6 +528,38 @@ def get_pdf_simple():
     )
     file = promise.get()
     return send_file(file)
+
+
+@app.route("/get_pdf_indexed_uncompressed", methods=["GET"])
+@requires_arg_path
+def get_pdf_indexed_uncompressed():
+    inputs_path, files_path, outputs_path, is_private = format_path(request.values)
+    if files_path is None or outputs_path is None:
+        abort(HTTPStatus.NOT_FOUND)
+    
+    doc_basename = get_file_basename(files_path)
+    uncompressed_path = f"{outputs_path}/{doc_basename}_indexed_uncompressed.pdf"
+    
+    if not os.path.exists(uncompressed_path):
+        abort(HTTPStatus.NOT_FOUND)
+    
+    return send_file(uncompressed_path)
+
+
+@app.route("/get_pdf_uncompressed", methods=["GET"])
+@requires_arg_path
+def get_pdf_simple_uncompressed():
+    inputs_path, files_path, outputs_path, is_private = format_path(request.values)
+    if files_path is None or outputs_path is None:
+        abort(HTTPStatus.NOT_FOUND)
+    
+    doc_basename = get_file_basename(files_path)
+    uncompressed_path = f"{outputs_path}/{doc_basename}_uncompressed.pdf"
+    
+    if not os.path.exists(uncompressed_path):
+        abort(HTTPStatus.NOT_FOUND)
+    
+    return send_file(uncompressed_path)
 
 
 @app.route("/get_csv", methods=["GET"])
@@ -1628,7 +1662,6 @@ def api_perform_ocr():
     
     # Get compression settings (can be sent separately when using presets)
     compress_override = request.form.get("compress", None)
-    compression_quality_override = request.form.get("compressionQuality", None)
     
     # Handle config parameter: can be preset name (string), JSON string (dict), or None
     if config is not None and config != "":
@@ -1661,8 +1694,6 @@ def api_perform_ocr():
     if config is not None and isinstance(config, dict):
         if compress_override is not None:
             config["compress"] = compress_override.lower() == "true"
-        if compression_quality_override is not None:
-            config["compressionQuality"] = compression_quality_override
 
     doc_id = generate_random_uuid()[:9]
     doc_path = f"{API_TEMP_PATH}/{doc_id}"
@@ -1735,11 +1766,26 @@ def api_get_result():
         f"Result is {data.get(type)} at /_export/_{type}.{RESULT_TYPE_TO_EXTENSION[type]}"
     )
 
-    if not data.get(type, {}).get("complete", False):
+    # For uncompressed PDFs, check the base type (pdf or pdf_indexed) for completion status
+    base_type = type.replace("_uncompressed", "")
+    if not data.get(base_type, {}).get("complete", False):
         abort(HTTPStatus.NOT_FOUND)
 
     file_extension = RESULT_TYPE_TO_EXTENSION[type]
-    internal_filename = f"_export/_{type}.{file_extension}"
+    
+    # Handle uncompressed PDF files which have different file paths
+    if type == "pdf_uncompressed":
+        doc_basename = data.get("original_filename", doc_id)
+        if "." in doc_basename:
+            doc_basename = doc_basename.rsplit(".", 1)[0]
+        internal_filename = f"_export/{doc_basename}_uncompressed.pdf"
+    elif type == "pdf_indexed_uncompressed":
+        doc_basename = data.get("original_filename", doc_id)
+        if "." in doc_basename:
+            doc_basename = doc_basename.rsplit(".", 1)[0]
+        internal_filename = f"_export/{doc_basename}_indexed_uncompressed.pdf"
+    else:
+        internal_filename = f"_export/_{type}.{file_extension}"
     
     # Get original filename from metadata, use doc_id as fallback
     original_name = data.get("original_filename", doc_id)

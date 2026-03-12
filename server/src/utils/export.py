@@ -31,13 +31,329 @@ from src.utils.file import OUTPUTS_PATH
 from src.utils.file import PRIVATE_PATH
 from src.utils.file import size_to_units
 from src.utils.file import update_json_file
-from src.utils.image_compression import mrc_pdf_from_path
+from src.utils.image_compression import mrc_pdf_from_path, mrc_pdf_from_bytes
+import fitz
 
 log = logging.getLogger(__name__)
 
 # Reduced from 150 to 100 to prevent OOM (Out of Memory) during compression
 # Lower DPI = smaller images in memory = less RAM usage
 OUT_DEFAULT_DPI = 100
+
+
+def _export_pdf_compress_first(
+    files_path,
+    outputs_path,
+    inputs_path,
+    data,
+    data_file,
+    target,
+    doc_basename,
+    original_extension,
+    compression_target_dpi,
+    compression_bg_quality,
+    compression_fg_quality,
+    compression_flatten,
+    dpi_original,
+    generate_index,
+    get_csv,
+    simple,
+    filename_csv,
+):
+    """
+    COMPRESS-FIRST WORKFLOW: Compress original file, then add OCR text layer directly.
+    
+    This approach:
+    1. Memory efficient: Compresses original TIF/PDF first (reduces from ~100MB to ~1-2MB)
+    2. Maintains compression: Adds text directly to compressed PDF (no rebuild/re-expansion)
+    3. Avoids OOM: Works with small compressed file, not large intermediate PDFs
+    
+    Note: Text coordinates use PyMuPDF without horizontal scaling, so text may not be
+    perfectly selectable character-by-character, but will be searchable.
+    """
+    import time
+    
+    log.info("Starting compress-first workflow with ReportLab coordinate system")
+    
+    # Step 1: Find original file
+    if inputs_path and os.path.isfile(inputs_path):
+        original_file_path = inputs_path
+    else:
+        relative_path = files_path.replace(FILES_PATH, "").strip("/")
+        parts = relative_path.split("/")
+        if len(parts) > 1:
+            folder_path = "/".join(parts[:-1])
+            original_file_path = f"{INPUTS_PATH}/{folder_path}/{doc_basename}.{original_extension}"
+        else:
+            original_file_path = f"{INPUTS_PATH}/{doc_basename}.{original_extension}"
+    
+    if not os.path.exists(original_file_path):
+        log.error(f"Original file not found: {original_file_path}")
+        raise FileNotFoundError(f"Original file not found: {original_file_path}")
+    
+    log.info(f"Found original file: {original_file_path}")
+    
+    # Step 2: Compress original file
+    print("\n" + "="*70)
+    print("📦 COMPRESSING ORIGINAL FILE")
+    print("="*70)
+    
+    update_json_file(
+        data_file,
+        {
+            "status": {
+                "stage": "compressing",
+                "message": "A comprimir ficheiro original...",
+                "progress": 0,
+            }
+        },
+    )
+    
+    original_size = os.path.getsize(original_file_path)
+    print(f"📄 Input: {original_file_path}")
+    print(f"📊 Size: {size_to_units(original_size)}")
+    
+    def compression_progress_callback(current_page, total_pages, stage):
+        progress_percent = (current_page / total_pages * 100) if total_pages > 0 else 0
+        if stage == "processing":
+            message = f"A comprimir - Página {current_page}/{total_pages}"
+        else:
+            message = "A comprimir..."
+        update_json_file(
+            data_file,
+            {
+                "status": {
+                    "stage": "compressing",
+                    "message": message,
+                    "progress": progress_percent,
+                }
+            },
+        )
+    
+    start_time = time.time()
+    
+    # Uncompressed copy destination
+    if simple:
+        uncompressed_filename = f"{outputs_path}/{doc_basename}_uncompressed.pdf"
+    else:
+        uncompressed_filename = f"{outputs_path}/{doc_basename}_indexed_uncompressed.pdf"
+    
+    # Temp path for compressed images-only PDF
+    temp_compressed_pdf = f"{files_path}/_temp_compressed_images.pdf"
+    
+    try:
+        with open(original_file_path, "rb") as f:
+            original_bytes = f.read()
+        
+        compressed_bytes = mrc_pdf_from_bytes(
+            file_bytes=original_bytes,
+            filetype=original_extension,
+            target_dpi=compression_target_dpi,
+            render_dpi=dpi_original,
+            output_pdf_path=temp_compressed_pdf,
+            output_uncompressed_pdf_path=uncompressed_filename,
+            bg_format="JPEG",
+            fg_format="JPEG",
+            bg_quality=compression_bg_quality,
+            fg_quality=compression_fg_quality,
+            mask_method="cv",
+            flatten_to_jpeg=compression_flatten,
+            progress_callback=compression_progress_callback,
+        )
+        
+        compression_time = time.time() - start_time
+        compressed_size = os.path.getsize(temp_compressed_pdf)
+        compression_ratio = (1 - compressed_size / original_size) * 100 if original_size > 0 else 0
+        
+        print(f"\n✅ Compressed: {size_to_units(compressed_size)} ({compression_ratio:.1f}% reduction)")
+        log.info(f"Compression complete in {compression_time:.2f}s")
+        
+    except Exception as e:
+        log.error(f"Compression failed: {e}")
+        print(f"\n❌ COMPRESSION FAILED: {str(e)}")
+        if os.path.exists(temp_compressed_pdf):
+            os.remove(temp_compressed_pdf)
+        raise
+    
+    # Step 3: Add OCR text layer directly to compressed PDF using PyMuPDF
+    print(f"📝 Adding OCR text layer to compressed PDF...")
+    
+    update_json_file(
+        data_file,
+        {
+            "status": {
+                "stage": "exporting",
+                "message": "A adicionar texto OCR...",
+            }
+        },
+    )
+    
+    try:
+        # Open compressed PDF with PyMuPDF
+        compressed_pdf = fitz.open(temp_compressed_pdf)
+        
+        # Get OCR results
+        ocr_results_path = f"{files_path}/_ocr_results"
+        ocr_files = sorted([
+            f for f in os.listdir(ocr_results_path)
+            if f.endswith(".json") and not f.startswith("_")
+        ], key=lambda x: int(re.search(r"_(\d+)", x).group(1)) if re.search(r"_(\d+)", x) else 0)
+        
+        log.info(f"Found {len(ocr_files)} OCR result files")
+        
+        # Calculate scale factor for coordinates
+        scale_factor = compression_target_dpi / dpi_original
+        log.info(f"Coordinate scale factor: {scale_factor}")
+        
+        words = {}
+        
+        # Process each page
+        for page_idx in range(min(len(compressed_pdf), len(ocr_files))):
+            page = compressed_pdf[page_idx]
+            page_rect = page.rect
+            page_height = page_rect.height
+            
+            ocr_file = ocr_files[page_idx]
+            hocr_path = os.path.join(ocr_results_path, ocr_file)
+            
+            # Load OCR data
+            with open(hocr_path, encoding="utf-8") as f:
+                hocrfile = json.load(f)
+            
+            # Add text to page
+            for section in hocrfile:
+                for line in section:
+                    for word in line:
+                        rawtext = word["text"]
+                        box = word["box"]  # [x0, y0, x1, y1] in original DPI
+                        
+                        if not rawtext or not rawtext.strip():
+                            continue
+                        
+                        # Calculate scaled coordinates for compressed PDF
+                        x0 = box[0] * scale_factor
+                        y0 = box[1] * scale_factor
+                        x1 = box[2] * scale_factor
+                        y1 = box[3] * scale_factor
+                        
+                        # Convert to PDF coordinate system (bottom-left origin)
+                        pdf_y0 = page_height - y1
+                        pdf_y1 = page_height - y0
+                        
+                        # Calculate box dimensions
+                        box_width = x1 - x0
+                        box_height = y1 - y0
+                        
+                        # Estimate appropriate font size based on box height
+                        # Typically, font size is roughly 0.7-0.8 of the box height
+                        estimated_fontsize = box_height * 0.75
+                        
+                        # Create bounding box rectangle
+                        rect = fitz.Rect(x0, pdf_y0, x1, pdf_y1)
+                        
+                        # Insert text in the bounding box
+                        # PyMuPDF will try to fit the text within the rectangle
+                        try:
+                            page.insert_textbox(
+                                rect,
+                                rawtext,
+                                fontsize=estimated_fontsize,
+                                fontname="helv",  # Helvetica (built-in PDF font)
+                                render_mode=3,  # invisible text
+                                align=0,  # left-aligned
+                            )
+                        except:
+                            # Fallback to simple insert_text if textbox fails
+                            page.insert_text(
+                                point=(x0, page_height - (box[3] * scale_factor)),
+                                text=rawtext,
+                                fontsize=8,
+                                fontname="helv",
+                                render_mode=3,
+                            )
+                        
+                        # Collect words for index if needed
+                        if generate_index:
+                            w = rawtext.strip()
+                            remove_chars = [",", ".", ":", ";", "!", "?", '"', "'", "(", ")", "[", "]"]
+                            for c in remove_chars:
+                                w = w.replace(c, "")
+                            w = w.lower()
+                            
+                            if w:
+                                if w not in words:
+                                    words[w] = {"count": 1, "pages": str(page_idx + 1)}
+                                else:
+                                    words[w]["count"] += 1
+                                    if str(page_idx + 1) not in words[w]["pages"].split(", "):
+                                        words[w]["pages"] += f", {page_idx + 1}"
+            
+            if page_idx % 10 == 0 or page_idx == len(ocr_files) - 1:
+                update_json_file(
+                    data_file,
+                    {
+                        "status": {
+                            "stage": "exporting",
+                            "message": f"A adicionar texto - Página {page_idx + 1}/{len(ocr_files)}",
+                        }
+                    },
+                )
+        
+        # Save the modified compressed PDF to the target location
+        compressed_pdf.save(target, garbage=4, deflate=True, clean=True)
+        compressed_pdf.close()
+        
+        log.info(f"PDF with OCR text layer saved to {target}")
+        
+        # Generate CSV index if needed
+        if not simple and generate_index:
+            if get_csv:
+                words_list = [
+                    item for item in sorted(
+                        words.items(), key=lambda item: item[0].lower() + item[0]
+                    )
+                ]
+                export_csv_from_words(filename_csv, words_list)
+        
+        # Note: Index pages not added to compressed PDF to maintain compression efficiency
+        # The CSV export above provides the index data
+        if not simple and generate_index:
+            log.warning("Index pages skipped for compressed PDF (use CSV export for index data)")
+        
+        # Clean up temp compressed PDF
+        if os.path.exists(temp_compressed_pdf):
+            os.remove(temp_compressed_pdf)
+        
+        final_size = os.path.getsize(target)
+        print(f"\n✅ PDF EXPORT COMPLETE!")
+        print(f"📄 Output: {target}")
+        print(f"📊 Size: {size_to_units(final_size)}")
+        print("="*70 + "\n")
+        
+        # Update metadata
+        pdf_type = "pdf" if simple else "pdf_indexed"
+        data_update = {
+            pdf_type: {
+                "compressed_size": size_to_units(final_size),
+                "uncompressed_size": size_to_units(original_size),
+                "compression_ratio": f"{compression_ratio:.1f}%"
+            }
+        }
+        update_json_file(data_file, data_update)
+        
+        log.info(f"PDF export complete: {target}")
+        return target
+        
+    except Exception as e:
+        log.error(f"Failed to build PDF: {e}", exc_info=True)
+        print(f"\n❌ FAILED: {str(e)}")
+        # Clean up
+        if os.path.exists(temp_compressed_pdf):
+            os.remove(temp_compressed_pdf)
+        for temp_img in temp_images:
+            if os.path.exists(temp_img):
+                os.remove(temp_img)
+        raise
 
 
 ####################################################
@@ -55,7 +371,6 @@ def export_file(
     already_temp=False,
     get_csv=False,
     compress=True,
-    compression_quality='auto',
 ):
     """
     Direct to the correct function based on the filetype.
@@ -69,7 +384,6 @@ def export_file(
     :param simple: for a PDF, whether it should be simple, rather than with index
     :param get_csv: for a PDF, whether a CSV should be generated additionally
     :param compress: for a PDF, whether to apply MRC compression
-    :param compression_quality: compression quality mode ('auto', 'fast', 'high')
     """
     # Calculate outputs_path if not provided (for backward compatibility)
     if outputs_path is None:
@@ -94,7 +408,6 @@ def export_file(
             already_temp=already_temp,
             get_csv=get_csv,
             compress=compress,
-            compression_quality=compression_quality,
         )
 
     func = globals()[f"export_{filetype}"]
@@ -116,7 +429,6 @@ def export_file(
     # Add compress parameter for PDF exports
     if filetype == 'pdf':
         kwargs['compress'] = compress
-        kwargs['compression_quality'] = compression_quality
         log.info(f"export_file adding compress to kwargs: {compress} (type: {type(compress)})")
 
     return func(files_path, **kwargs)
@@ -328,7 +640,6 @@ def export_pdf(
     already_temp=False,
     get_csv=False,
     compress=True,
-    compression_quality='auto',
 ):
     """
     Export the file as a .pdf file.
@@ -342,9 +653,8 @@ def export_pdf(
     :param already_temp: temporary images already exist
     :param get_csv: also generate CSV index
     :param compress: apply MRC compression to reduce PDF file size
-    :param compression_quality: compression quality mode ('auto', 'fast', 'high')
     """
-    log.info(f"export_pdf called with compress={compress} (type: {type(compress)}), compression_quality={compression_quality}, simple={simple}, files_path={files_path}")
+    log.info(f"export_pdf called with compress={compress} (type: {type(compress)}), simple={simple}, files_path={files_path}")
     
     # Calculate outputs_path if not provided
     if outputs_path is None:
@@ -361,358 +671,399 @@ def export_pdf(
     filename_csv = f"{outputs_path}/_index.csv"
 
     dpi_original = 300
-    dpi_compressed = OUT_DEFAULT_DPI  # TODO: variable output DPI
+    dpi_compressed = OUT_DEFAULT_DPI
 
     target = filename if not simple else simple_filename
 
     if os.path.exists(target) and not force_recreate:
         return target
 
-    else:
-        generate_index = get_csv or not simple
+    data = get_data(data_file)
+    original_extension = data["extension"].lower()
+    
+    # Define compression defaults
+    COMPRESSION_DEFAULTS = {
+        "compressionTargetDpi": 100,
+        "compressionBgQuality": 40,
+        "compressionFgQuality": 80,
+        "compressionFlattenToJpeg": True
+    }
+    
+    # Get compression settings from config
+    config = data.get("config", {})
+    if not config and "ocr" in data and "config" in data["ocr"]:
+        config = data["ocr"]["config"]
+    
+    compression_target_dpi = config.get("compressionTargetDpi", COMPRESSION_DEFAULTS["compressionTargetDpi"])
+    compression_bg_quality = config.get("compressionBgQuality", COMPRESSION_DEFAULTS["compressionBgQuality"])
+    compression_fg_quality = config.get("compressionFgQuality", COMPRESSION_DEFAULTS["compressionFgQuality"])
+    compression_flatten = config.get("compressionFlattenToJpeg", COMPRESSION_DEFAULTS["compressionFlattenToJpeg"])
+    
+    log.info(f"Compression settings: target_dpi={compression_target_dpi}, bg_quality={compression_bg_quality}, fg_quality={compression_fg_quality}, flatten={compression_flatten}")
 
-        data = get_data(data_file)
-        original_extension = data["extension"].lower()
+    doc_basename = get_file_basename(files_path)
+    generate_index = get_csv or not simple
 
-        # Get the basename from files_path (document folder name)
-        doc_basename = get_file_basename(files_path)
-
-        # Determine where to find original file and where to put temp files
-        # Original file is in _inputs, temp files go in _files for processing
-        if original_extension == "pdf":
-            page_extension = "png"
-            # Generate temporary images if not already done
-            if not already_temp:
-                # Original PDF is in _inputs
-                if inputs_path and os.path.isfile(inputs_path):
-                    original_pdf_path = inputs_path
-                else:
-                    # Fallback: try to find in _files (for API files or legacy)
-                    original_pdf_path = f"{files_path}/{doc_basename}.pdf"
-
-                pdf = pdfium.PdfDocument(original_pdf_path)
-                for i in range(len(pdf)):
-                    page = pdf[i]
-                    bitmap = page.render(dpi_compressed / 72)
-                    pil_image = bitmap.to_pil()
-                    pil_image.save(f"{files_path}/{doc_basename}_{i}$.{page_extension}")
-
-                pdf.close()
-
-        elif original_extension == "zip":
-            page_extension = "png"
-            # Generate temporary images if not already done
-            if not already_temp:
-                pages_list = [
-                    p
-                    for p in os.listdir(f"{files_path}/_pages")
-                    if os.path.isfile(os.path.join(f"{files_path}/_pages", p))
-                ]
-                pages_list.sort(key=lambda s: (s.casefold(), s))
-                for i, page in enumerate(pages_list):
-                    os.link(
-                        f"{files_path}/_pages/{page}",
-                        f"{files_path}/{doc_basename}_{i}$.{page_extension}",
-                    )
-
-        else:
-            page_extension = original_extension
-            # Generate temporary images if not already done
-            if not already_temp:
-                pages_path = f"{files_path}/_pages"
-                pages_list = [p.path for p in os.scandir(pages_path) if p.is_file()]
-                pages_list.sort(key=lambda s: (s.casefold(), s))
-                for i, page in enumerate(pages_list):
-                    os.link(
-                        page,
-                        f"{files_path}/{doc_basename}_{i}$.{page_extension}",
-                    )
-
-        words = {}
-
-        pdf = Canvas(target, pageCompression=1, pagesize=A4)
-        pdf.setCreator("hocr-tools")
-        pdf.setTitle(target)
-
-        filenames_asterisk = [
-            x for x in os.listdir(files_path) if x.endswith(f"$.{page_extension}")
-        ]
-        images = sorted(
-            filenames_asterisk, key=lambda x: int(re.search(r"_(\d+)\$", x).group(1))
+    # WORKFLOW DECISION: For PDF/TIF with compression, use compress-first workflow
+    # This avoids memory issues by compressing the original file before building the PDF
+    if compress and original_extension in ("pdf", "tif", "tiff"):
+        log.info(f"Using compress-first workflow for {original_extension} file")
+        return _export_pdf_compress_first(
+            files_path=files_path,
+            outputs_path=outputs_path,
+            inputs_path=inputs_path,
+            data=data,
+            data_file=data_file,
+            target=target,
+            doc_basename=doc_basename,
+            original_extension=original_extension,
+            compression_target_dpi=compression_target_dpi,
+            compression_bg_quality=compression_bg_quality,
+            compression_fg_quality=compression_fg_quality,
+            compression_flatten=compression_flatten,
+            dpi_original=dpi_original,
+            generate_index=generate_index,
+            get_csv=get_csv,
+            simple=simple,
+            filename_csv=filename_csv,
         )
-        for i, image in enumerate(images):
-            image_path = os.path.join(files_path, image)
-            image_basename = get_file_basename(image)
-            image_basename = image_basename[:-1]
+    
+    # LEGACY WORKFLOW: For other file types or when compression is disabled
+    # Build PDF with images + OCR, then optionally compress
+    log.info(f"Using legacy workflow: build PDF with OCR, then compress")
+    
+    page_extension = original_extension
+    # Track whether images are at original DPI or have been downscaled
+    images_at_original_dpi = True  # Default for TIF, ZIP, etc.
+    
+    if original_extension == "pdf":
+        page_extension = "png"
+        images_at_original_dpi = False  # PDF pages are rendered at dpi_compressed
+        if not already_temp:
+            if inputs_path and os.path.isfile(inputs_path):
+                original_pdf_path = inputs_path
+            else:
+                original_pdf_path = f"{files_path}/{doc_basename}.pdf"
 
-            hocr_path = f"{files_path}/_ocr_results/{image_basename}.json"
+            pdf = pdfium.PdfDocument(original_pdf_path)
+            for i in range(len(pdf)):
+                page = pdf[i]
+                bitmap = page.render(dpi_compressed / 72)
+                pil_image = bitmap.to_pil()
+                pil_image.save(f"{files_path}/{doc_basename}_{i}$.{page_extension}")
 
-            im = Image.open(image_path)
-            w, h = im.size
-            pdf.setPageSize((w, h))
-            pdf.drawImage(image_path, 0, 0, width=w, height=h)
+            pdf.close()
 
-            new_words = add_text_layer(
-                pdf,
-                hocr_path,
-                h,
-                dpi_original,
-                dpi_compressed,
-                get_index_words=generate_index,
-            )
-
-            if generate_index:
-                for word in new_words:
-                    if word not in words:
-                        words[word] = {"count": new_words[word], "pages": str(i + 1)}
-                    else:
-                        words[word]["count"] += new_words[word]
-                        words[word]["pages"] += f", {i + 1}"
-
-            pdf.showPage()
-
-            # Update status on first and last pages, and every 10 pages
-            total_pages = len(images)
-            current_page = i + 1
-            if current_page in (0, total_pages) or current_page % 10 == 0:
-                update_json_file(
-                    data_file,
-                    {
-                        "status": {
-                            "stage": "exporting",
-                            "message": f"A gerar PDF {'com índice ' if not simple else ''}{current_page}/{total_pages}",
-                        }
-                    },
+    elif original_extension == "zip":
+        page_extension = "png"
+        images_at_original_dpi = True  # ZIP images are at their original resolution
+        if not already_temp:
+            pages_list = [
+                p
+                for p in os.listdir(f"{files_path}/_pages")
+                if os.path.isfile(os.path.join(f"{files_path}/_pages", p))
+            ]
+            pages_list.sort(key=lambda s: (s.casefold(), s))
+            for i, page in enumerate(pages_list):
+                os.link(
+                    f"{files_path}/_pages/{page}",
+                    f"{files_path}/{doc_basename}_{i}$.{page_extension}",
                 )
 
-            # Delete already used temp image if not intending to keep for later
-            if not keep_temp:
-                with suppress(OSError):
-                    os.remove(image_path)
+    else:
+        # TIF and other formats - images are at original resolution
+        images_at_original_dpi = True
+        if not already_temp:
+            pages_path = f"{files_path}/_pages"
+            pages_list = [p.path for p in os.scandir(pages_path) if p.is_file()]
+            pages_list.sort(key=lambda s: (s.casefold(), s))
+            for i, page in enumerate(pages_list):
+                os.link(
+                    page,
+                    f"{files_path}/{doc_basename}_{i}$.{page_extension}",
+                )
+
+    words = {}
+
+    pdf = Canvas(target, pageCompression=1, pagesize=A4)
+    pdf.setCreator("hocr-tools")
+    pdf.setTitle(target)
+
+    filenames_asterisk = [
+        x for x in os.listdir(files_path) if x.endswith(f"$.{page_extension}")
+    ]
+    images = sorted(
+        filenames_asterisk, key=lambda x: int(re.search(r"_(\d+)\$", x).group(1))
+    )
+    for i, image in enumerate(images):
+        image_path = os.path.join(files_path, image)
+        image_basename = get_file_basename(image)
+        image_basename = image_basename[:-1]
+
+        hocr_path = f"{files_path}/_ocr_results/{image_basename}.json"
+
+        im = Image.open(image_path)
+        w, h = im.size
+        pdf.setPageSize((w, h))
+        pdf.drawImage(image_path, 0, 0, width=w, height=h)
+
+        # For TIF/ZIP: images are at original DPI, so scale_factor = 1.0
+        # For PDF: images rendered at dpi_compressed, so scale_factor = dpi_compressed/dpi_original
+        if images_at_original_dpi:
+            text_scale_factor = 1.0
+        else:
+            text_scale_factor = None  # Let add_text_layer calculate it
+        
+        new_words = add_text_layer(
+            pdf,
+            hocr_path,
+            h,
+            dpi_original,
+            dpi_compressed,
+            get_index_words=generate_index,
+            scale_factor=text_scale_factor,
+        )
 
         if generate_index:
-            # Sort the `words` dict by key
-            words = [
-                item
-                for item in sorted(
-                    words.items(), key=lambda item: item[0].lower() + item[0]
-                )
-            ]
+            for word in new_words:
+                if word not in words:
+                    words[word] = {"count": new_words[word], "pages": str(i + 1)}
+                else:
+                    words[word]["count"] += new_words[word]
+                    words[word]["pages"] += f", {i + 1}"
 
-        if get_csv:
+        pdf.showPage()
+
+        total_pages = len(images)
+        current_page = i + 1
+        if current_page in (0, total_pages) or current_page % 10 == 0:
             update_json_file(
                 data_file,
                 {
                     "status": {
                         "stage": "exporting",
-                        "message": "A gerar CSV",
+                        "message": f"A gerar PDF {'com índice ' if not simple else ''}{current_page}/{total_pages}",
                     }
                 },
             )
-            export_csv_from_words(filename_csv, words)
 
-        if not simple:
+        if not keep_temp:
+            with suppress(OSError):
+                os.remove(image_path)
+
+    if generate_index:
+        words = [
+            item
+            for item in sorted(
+                words.items(), key=lambda item: item[0].lower() + item[0]
+            )
+        ]
+
+    if get_csv:
+        update_json_file(
+            data_file,
+            {
+                "status": {
+                    "stage": "exporting",
+                    "message": "A gerar CSV",
+                }
+            },
+        )
+        export_csv_from_words(filename_csv, words)
+
+    if not simple:
+        update_json_file(
+            data_file,
+            {
+                "status": {
+                    "stage": "exporting",
+                    "message": "A gerar índice",
+                }
+            },
+        )
+        rows = 100
+        cols = 2
+        title_size = 38
+        size = 20
+        margin_x = 20
+        margin_y_title = 40
+        margin_y = 2 * margin_y_title
+
+        word_count = len(words)
+
+        for i in range(0, word_count, rows * cols):
+            w = 1240
+            h = 1754
+            pdf.setPageSize((w, h))
+
+            x, y = margin_x, h - margin_y
+
+            set_words = words[i : i + rows * cols]
+
+            available_height = h - 5 * margin_y
+
+            max_rows = available_height // size
+
+            rows = (len(set_words) - 1) // cols + 1
+            rows = min(max_rows, rows)
+
+            if i == 0:
+                title = pdf.beginText(x, h - margin_y_title)
+                title.setTextRenderMode(0)
+                title.setFont("Helvetica", title_size)
+                title.textOut("Índice de palavras")
+                pdf.drawText(title)
+
+            text = pdf.beginText(x, y)
+            for col in range(cols):
+                for row in range(rows):
+                    index = col * rows + row
+                    if index >= len(set_words):
+                        break
+
+                    word = set_words[index]
+                    text.setTextRenderMode(0)
+
+                    text.setFont("Helvetica-Bold", size)
+                    text.textOut(word[0])
+
+                    descript = f': {word[1]["pages"]}'
+                    text.setFont("Helvetica", size)
+                    text.textLine(descript)
+
+                y = h - margin_y
+                x += (w - 2 * margin_x) // cols
+                text.setTextOrigin(x, y)
+
+            pdf.drawText(text)
+            pdf.showPage()
+
+    pdf.save()
+    
+    uncompressed_size = os.path.getsize(target)
+    
+    # Apply MRC compression to the generated PDF (legacy workflow)
+    if compress:
+        log.info(f"PDF compression is enabled, starting compression for: {target}")
+        try:
+            print("\n" + "="*70)
+            print("📦 STARTING PDF COMPRESSION")
+            print("="*70)
+            
             update_json_file(
                 data_file,
                 {
                     "status": {
-                        "stage": "exporting",
-                        "message": "A gerar índice",
+                        "stage": "compressing",
+                        "message": "A comprimir PDF - A iniciar...",
+                        "progress": 0,
                     }
                 },
             )
-            rows = 100
-            cols = 2
-            title_size = 38
-            size = 20
-            margin_x = 20
-            margin_y_title = 40
-            margin_y = 2 * margin_y_title
-
-            word_count = len(words)
-
-            for i in range(0, word_count, rows * cols):
-                # print index page as A4 page at 150 PPI/DPI
-                w = 1240
-                h = 1754
-                pdf.setPageSize((w, h))
-
-                x, y = margin_x, h - margin_y
-
-                set_words = words[i : i + rows * cols]
-
-                # ensure there is some margin at the bottom
-                available_height = h - 5 * margin_y
-
-                max_rows = available_height // size
-
-                rows = (len(set_words) - 1) // cols + 1
-                rows = min(max_rows, rows)
-
-                # Write index title
-                if i == 0:
-                    title = pdf.beginText(x, h - margin_y_title)
-                    title.setTextRenderMode(0)
-                    title.setFont("Helvetica", title_size)
-                    title.textOut("Índice de palavras")
-                    pdf.drawText(title)
-
-                # Write index
-                text = pdf.beginText(x, y)
-                for col in range(cols):
-                    for row in range(rows):
-                        index = col * rows + row
-                        if index >= len(set_words):
-                            break
-
-                        word = set_words[index]
-                        text.setTextRenderMode(0)
-
-                        # Write word
-                        text.setFont("Helvetica-Bold", size)
-                        text.textOut(word[0])
-
-                        # Write rest of line
-                        descript = f': {word[1]["pages"]}'
-                        text.setFont("Helvetica", size)
-                        text.textLine(descript)
-
-                    y = h - margin_y
-                    x += (w - 2 * margin_x) // cols
-                    text.setTextOrigin(x, y)
-
-                pdf.drawText(text)
-                pdf.showPage()
-
-        pdf.save()
-        
-        # Apply MRC compression to reduce PDF file size (if enabled)
-        if compress:
-            log.info(f"PDF compression is enabled, starting compression for: {target}")
-            try:
-                print("\n" + "="*70)
-                print("📦 STARTING PDF COMPRESSION")
-                print("="*70)
+            
+            original_size = os.path.getsize(target)
+            print(f"📄 Input file: {target}")
+            print(f"📊 Original size: {size_to_units(original_size)} ({original_size:,} bytes)")
+            print(f"🎯 Target DPI: {OUT_DEFAULT_DPI}")
+            print(f"🔧 Compression settings:")
+            print(f"   - Background format: JPEG (quality: 40)")
+            print(f"   - Foreground format: JPEG (quality: 80)")
+            print(f"   - Mask method: CV (Computer Vision)")
+            print(f"\n⏳ Applying MRC (Mixed Raster Content) compression...")
+            
+            log.info(f"Starting MRC compression for: {target}")
+            
+            def compression_progress_callback(current_page, total_pages, stage):
+                progress_percent = (current_page / total_pages * 100) if total_pages > 0 else 0
+                
+                if stage == "starting":
+                    message = "A comprimir PDF - A iniciar..."
+                elif stage == "processing":
+                    message = f"A comprimir PDF - Página {current_page}/{total_pages}"
+                elif stage == "finalizing":
+                    message = "A comprimir PDF - A finalizar..."
+                elif stage == "complete":
+                    message = "Compressão concluída"
+                else:
+                    message = "A comprimir PDF"
                 
                 update_json_file(
                     data_file,
                     {
                         "status": {
                             "stage": "compressing",
-                            "message": "A comprimir PDF - A iniciar...",
-                            "progress": 0,
+                            "message": message,
+                            "progress": progress_percent,
                         }
                     },
                 )
-                
-                original_size = os.path.getsize(target)
-                print(f"📄 Input file: {target}")
-                print(f"📊 Original size: {size_to_units(original_size)} ({original_size:,} bytes)")
-                print(f"🎯 Target DPI: {OUT_DEFAULT_DPI}")
-                print(f"🔧 Compression settings:")
-                print(f"   - Background format: JPEG (quality: 40)")
-                print(f"   - Foreground format: JPEG (quality: 80)")
-                print(f"   - Mask method: CV (Computer Vision)")
-                print(f"\n⏳ Applying MRC (Mixed Raster Content) compression...")
-                
-                log.info(f"Starting MRC compression for: {target}")
-                
-                # Define progress callback to update browser status
-                def compression_progress_callback(current_page, total_pages, stage):
-                    progress_percent = (current_page / total_pages * 100) if total_pages > 0 else 0
-                    
-                    if stage == "starting":
-                        message = "A comprimir PDF - A iniciar..."
-                    elif stage == "processing":
-                        message = f"A comprimir PDF - Página {current_page}/{total_pages}"
-                    elif stage == "finalizing":
-                        message = "A comprimir PDF - A finalizar..."
-                    elif stage == "complete":
-                        message = "Compressão concluída"
-                    else:
-                        message = "A comprimir PDF"
-                    
-                    update_json_file(
-                        data_file,
-                        {
-                            "status": {
-                                "stage": "compressing",
-                                "message": message,
-                                "progress": progress_percent,
-                            }
-                        },
-                    )
-                
-                # Compress the PDF using MRC (Mixed Raster Content)
-                import time
-                start_time = time.time()
-                
-                # Determine render DPI and fast mode based on user's compression quality choice and file size
-                if compression_quality == 'high':
-                    # High quality mode: always use best settings
-                    adaptive_render_dpi = 300
-                    use_fast_mode = False
-                elif compression_quality == 'fast':
-                    # Fast mode: always use fast settings
-                    adaptive_render_dpi = 150
-                    use_fast_mode = True
-                else:  # 'auto' or default
-                    # Auto mode: adaptive based on file size
-                    if original_size < 5 * 1024 * 1024:  # < 5MB
-                        adaptive_render_dpi = 300
-                        use_fast_mode = False
-                    elif original_size < 20 * 1024 * 1024:  # < 20MB
-                        adaptive_render_dpi = 150
-                        use_fast_mode = True
-                    else:  # >= 20MB
-                        adaptive_render_dpi = OUT_DEFAULT_DPI
-                        use_fast_mode = True
-                
-                compressed_pdf_bytes = mrc_pdf_from_path(
-                    input_path=target,
-                    target_dpi=OUT_DEFAULT_DPI,
-                    render_dpi=adaptive_render_dpi,  # Adaptive DPI to prevent OOM
-                    output_pdf_path=target,  # Overwrite the original
-                    bg_format="JPEG",
-                    fg_format="JPEG",
-                    bg_quality=40,  # Background quality (lower = smaller size)
-                    fg_quality=80,  # Foreground quality (higher for text clarity)
-                    mask_method="cv",  # Use CV method for better text detection
-                    flatten_to_jpeg=use_fast_mode,  # Use fast flattening for larger files
-                    fast_mode=use_fast_mode,  # Enable fast mode for larger files
-                    progress_callback=compression_progress_callback,
-                )
-                
-                compression_time = time.time() - start_time
-                
-                compressed_size = os.path.getsize(target)
-                compression_ratio = (1 - compressed_size / original_size) * 100 if original_size > 0 else 0
-                
-                print(f"\n✅ COMPRESSION COMPLETE!")
-                print(f"Render DPI: {adaptive_render_dpi} (adaptive based on file size)")
-                print(f"📊 Compressed size: {size_to_units(compressed_size)} ({compressed_size:,} bytes)")
-                print(f"💾 Space saved: {size_to_units(original_size - compressed_size)} ({compression_ratio:.1f}% reduction)")
-                print(f"⏱️  Compression time: {compression_time:.2f} seconds")
-                print(f"💨 Processing speed: {(original_size / compression_time / 1024 / 1024):.2f} MB/s")
-                print("="*70 + "\n")
-                
-                log.info(
-                    f"PDF compressed successfully: {target} "
-                    f"({size_to_units(original_size)} → {size_to_units(compressed_size)}, "
-                    f"{compression_ratio:.1f}% reduction in {compression_time:.2f}s)"
-                )
-            except Exception as e:
-                print(f"\n❌ COMPRESSION FAILED: {str(e)}")
-                print(f"⚠️  Using uncompressed version")
-                print("="*70 + "\n")
-                log.warning(f"Failed to compress PDF: {e}. Using uncompressed version.")
-        else:
-            log.info(f"PDF compression is disabled, skipping compression for: {target}")
-            print(f"\n⏭️  SKIPPING PDF COMPRESSION (disabled in configuration)")
-            print(f"📄 File: {target}")
-            print(f"📊 Size: {size_to_units(os.path.getsize(target))}\n")
-        
-        return target
+            
+            import time
+            start_time = time.time()
+            
+            doc_basename = get_file_basename(files_path)
+            if simple:
+                uncompressed_filename = f"{outputs_path}/{doc_basename}_uncompressed.pdf"
+            else:
+                uncompressed_filename = f"{outputs_path}/{doc_basename}_indexed_uncompressed.pdf"
+            
+            compressed_pdf_bytes = mrc_pdf_from_path(
+                input_path=target,
+                target_dpi=compression_target_dpi,
+                render_dpi=compression_target_dpi,
+                output_pdf_path=target,
+                output_uncompressed_pdf_path=uncompressed_filename,
+                bg_format="JPEG",
+                fg_format="JPEG",
+                bg_quality=compression_bg_quality,
+                fg_quality=compression_fg_quality,
+                mask_method="cv",
+                flatten_to_jpeg=compression_flatten,
+                progress_callback=compression_progress_callback,
+            )
+            
+            compression_time = time.time() - start_time
+            
+            compressed_size = os.path.getsize(target)
+            uncompressed_file_size = os.path.getsize(uncompressed_filename) if os.path.exists(uncompressed_filename) else uncompressed_size
+            compression_ratio = (1 - compressed_size / uncompressed_file_size) * 100 if uncompressed_file_size > 0 else 0
+            
+            print(f"\n✅ COMPRESSION COMPLETE!")
+            print(f"🎯 Target DPI: {compression_target_dpi}")
+            print(f"📊 Compressed size: {size_to_units(compressed_size)} ({compressed_size:,} bytes)")
+            print(f"📊 Uncompressed size: {size_to_units(uncompressed_file_size)} ({uncompressed_file_size:,} bytes)")
+            print(f"💾 Space saved: {size_to_units(uncompressed_file_size - compressed_size)} ({compression_ratio:.1f}% reduction)")
+            print(f"⏱️  Compression time: {compression_time:.2f} seconds")
+            print(f"💨 Processing speed: {(uncompressed_file_size / compression_time / 1024 / 1024):.2f} MB/s")
+            print("="*70 + "\n")
+            
+            log.info(
+                f"PDF compressed successfully: {target} "
+                f"({size_to_units(uncompressed_file_size)} → {size_to_units(compressed_size)}, "
+                f"{compression_ratio:.1f}% reduction in {compression_time:.2f}s)"
+            )
+            
+            pdf_type = "pdf" if simple else "pdf_indexed"
+            data_update = {
+                pdf_type: {
+                    "compressed_size": size_to_units(compressed_size),
+                    "uncompressed_size": size_to_units(uncompressed_file_size),
+                    "compression_ratio": f"{compression_ratio:.1f}%"
+                }
+            }
+            update_json_file(data_file, data_update)
+        except Exception as e:
+            print(f"\n❌ COMPRESSION FAILED: {str(e)}")
+            print(f"⚠️  Using uncompressed version")
+            print("="*70 + "\n")
+            log.warning(f"Failed to compress PDF: {e}. Using uncompressed version.")
+    else:
+        log.info(f"PDF compression is disabled, skipping compression for: {target}")
+        print(f"\n⏭️  SKIPPING PDF COMPRESSION (disabled in configuration)")
+        print(f"📄 File: {target}")
+        print(f"📊 Size: {size_to_units(os.path.getsize(target))}\n")
+    
+    return target
 
 
 def find_index_words(hocr_path):
@@ -757,13 +1108,27 @@ def find_index_words(hocr_path):
 
 
 def add_text_layer(
-    pdf, hocr_path, height, dpi_original, dpi_compressed, get_index_words=False
+    pdf, hocr_path, height, dpi_original, dpi_compressed, get_index_words=False, scale_factor=None
 ):
-    """Draw an invisible text layer for OCR data"""
+    """Draw an invisible text layer for OCR data
+    
+    Args:
+        pdf: ReportLab canvas object
+        hocr_path: Path to OCR results JSON file
+        height: Page height in pixels
+        dpi_original: Original DPI (for legacy calculation)
+        dpi_compressed: Compressed DPI (for legacy calculation)
+        get_index_words: Whether to generate word index
+        scale_factor: Pre-calculated scale factor (if None, uses dpi_compressed/dpi_original)
+    """
     if get_index_words:
         index_words = find_index_words(hocr_path)
     else:
         index_words = None
+
+    # Use provided scale factor or calculate from DPIs
+    if scale_factor is None:
+        scale_factor = dpi_compressed / dpi_original
 
     with open(hocr_path, encoding="utf-8") as f:
         hocrfile = json.load(f)
@@ -782,11 +1147,11 @@ def add_text_layer(
                 text = pdf.beginText()
                 text.setTextRenderMode(3)  # double invisible
                 text.setFont("Times-Roman", 8)
-                x_offset = box[0] * dpi_compressed / dpi_original  # Adjust X offset
-                y_offset = height - b * dpi_compressed / dpi_original  # Adjust Y offset
+                x_offset = box[0] * scale_factor
+                y_offset = height - b * scale_factor
                 text.setTextOrigin(x_offset, y_offset)
-                box_width = (box[2] - box[0]) * dpi_compressed / dpi_original
-                width_scale = 100.0 * box_width / font_width  # Adjust width scaling
+                box_width = (box[2] - box[0]) * scale_factor
+                width_scale = 100.0 * box_width / font_width
                 text.setHorizScale(width_scale)
                 text.textLine(rawtext)
                 pdf.drawText(text)

@@ -256,6 +256,11 @@
     "compression fast desc": "Processamento mais rápido, qualidade ligeiramente inferior (bom para ficheiros grandes)",
     "compression high quality": "Alta Qualidade",
     "compression high quality desc": "Melhor qualidade, processamento mais lento (bom para ficheiros pequenos)",
+    "compression settings": "Definições de Compressão",
+    "compression target dpi": "DPI de Destino",
+    "compression bg quality": "Qualidade do Fundo (1-100)",
+    "compression fg quality": "Qualidade do Texto (1-100)",
+    "compression flatten to jpeg": "Achatar para Camada JPEG Única",
     "compressing pdf starting": "A comprimir PDF - A iniciar...",
     "compressing pdf page": "A comprimir PDF - Página {{current}}/{{total}}",
     "compressing pdf finalizing": "A comprimir PDF - A finalizar...",
@@ -305,6 +310,10 @@
         "thresholding": "Método de binarização de imagem para converter tons de cinza em preto e branco:\n• Otsu: Cálculo automático de limiar (recomendado para a maioria dos casos)\n• Leptonica: Implementação alternativa de Otsu\n• Sauvola: Método adaptativo, melhor para documentos degradados com fundo variável",
         "additional_params": "Parâmetros avançados do Tesseract no formato 'chave=valor'. Exemplo: 'tessedit_char_whitelist=0123456789' para reconhecer apenas dígitos. Consulte a documentação do Tesseract para opções disponíveis.",
         "compress_pdf": "Aplica compressão de imagem para reduzir o tamanho do ficheiro PDF em 60-80% mantendo a precisão do texto. Recomendado para a maioria dos documentos. Desative apenas se necessitar da qualidade de imagem original ou estiver a ter problemas de processamento.",
+        "compression_target_dpi": "Resolução de saída em Pontos Por Polegada. Valores mais baixos (50-100) criam ficheiros menores com qualidade aceitável para texto. Valores mais altos (150-300) preservam mais detalhes mas aumentam o tamanho do ficheiro. Padrão: 100 DPI.",
+        "compression_bg_quality": "Qualidade JPEG para o fundo/imagens do documento (1-100). Valores mais baixos criam ficheiros menores. Recomendado: 30-50 para fundos. O texto não é afetado.",
+        "compression_fg_quality": "Qualidade JPEG para texto/camada de primeiro plano (1-100). Valores mais altos preservam a clareza do texto. Recomendado: 70-90 para texto legível. Padrão: 80.",
+        "compression_flatten": "Quando ativado, combina todas as camadas numa única imagem JPEG. Cria PDFs mais simples mas compressão menos eficiente. Desative para melhor compressão (usa MRC - Conteúdo Raster Misto com camadas separadas de fundo e texto).",
         "output_formats": "Selecione um ou mais formatos de saída:\n• PDF com índice: PDF pesquisável com coordenadas ao nível de palavra\n• PDF com texto: PDF pesquisável padrão (recomendado)\n• Texto simples: Apenas texto, sem formatação\n• Texto delimitado por página: Texto com separadores de página\n• CSV: Coordenadas de palavras em formato de folha de cálculo\n• NER: Entidades nomeadas (pessoas, locais, organizações)\n• hOCR/ALTO: Formatos estruturados com informação detalhada de layout"
     }
 }
