@@ -1,6 +1,7 @@
 import React from 'react';
 import Box from '@mui/material/Box';
 import Button from "@mui/material/Button";
+import { withTranslation } from "react-i18next";
 
 import TableCell from '@mui/material/TableCell';
 import TableRow from '@mui/material/TableRow';
@@ -46,7 +47,7 @@ class StaticFileRow extends React.Component {
                 <TableCell className="explorerCell detailsCell" align='left'>
                     <span>
                         {this.props.info["pages"]
-                            ? this.props.info["pages"] + " página(s)"
+                            ? this.props.info["pages"] + " " + this.props.t("page count")
                             : "—"
                         }
                     </span>
@@ -81,4 +82,4 @@ StaticFileRow.defaultProps = {
     downloadFile: null,
 }
 
-export default StaticFileRow;
+export default withTranslation()(StaticFileRow);

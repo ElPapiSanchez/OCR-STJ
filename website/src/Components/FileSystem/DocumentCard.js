@@ -240,7 +240,7 @@ class DocumentCard extends React.Component {
         const info = this.state.info;
         const stored = info["stored"];
         const pages = info["pages"];
-        const size = info["total_size"];
+        const size = info["size"];
         const creation = info["creation"];
         const ocrInfo = info["ocr"];
         const usingCustomConfig = info?.["config"] && info["config"] !== "default";

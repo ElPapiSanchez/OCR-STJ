@@ -7,6 +7,7 @@ import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import ClickAwayListener from "@mui/material/ClickAwayListener";
+import { withTranslation } from "react-i18next";
 
 import Notification from 'Components/Notifications/Notification';
 
@@ -101,7 +102,7 @@ class DeletePopup extends React.Component {
                     >
                         <Box sx={style}>
                             <Typography id="modal-modal-title" variant="h6" component="h2">
-                                Tem a certeza que quer apagar <b>{this.state.filename}</b>?
+                                {this.props.t("confirm delete")} <b>{this.state.filename}</b>?
                             </Typography>
 
                             <Box sx={{
@@ -115,7 +116,7 @@ class DeletePopup extends React.Component {
                                     sx={{border: '1px solid black', mt: '0.5rem'}}
                                     onClick={() => this.deleteItem()}
                                 >
-                                    Apagar
+                                    {this.props.t("delete")}
                                 </Button>
                             </Box>
 
@@ -136,4 +137,4 @@ DeletePopup.defaultProps = {
     submitCallback: null,
 }
 
-export default DeletePopup;
+export default withTranslation()(DeletePopup);

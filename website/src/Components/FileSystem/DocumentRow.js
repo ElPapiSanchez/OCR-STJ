@@ -455,7 +455,7 @@ class DocumentRow extends React.Component {
 
                     <TableCell className="explorerCell sizeCell" align='right'>
                         <span style={{fontSize: "0.92rem"}}>
-                            {info["total_size"]}
+                            {info["size"]}
                         </span>
                     </TableCell>
 
@@ -594,7 +594,7 @@ class DocumentRow extends React.Component {
                     ? <StaticFileRow
                         key="pdf_indexed"
                         expanded={this.state.expanded}
-                        name={"PDF com texto e índice de palavras"}
+                        name={this.props.t("pdf with index")}
                         filename={this.props.name}
                         type="pdf_indexed"
                         info={{
@@ -609,7 +609,7 @@ class DocumentRow extends React.Component {
                     ? <StaticFileRow
                         key="pdf_indexed_uncompressed"
                         expanded={this.state.expanded}
-                        name={"PDF com texto e índice (não comprimido)"}
+                        name={this.props.t("pdf with index uncompressed")}
                         filename={this.props.name}
                         type="pdf_indexed_uncompressed"
                         info={{
@@ -624,7 +624,7 @@ class DocumentRow extends React.Component {
                     ? <StaticFileRow
                         key="pdf"
                         expanded={this.state.expanded}
-                        name={"PDF com texto"}
+                        name={this.props.t("pdf with text")}
                         filename={this.props.name}
                         type="pdf"
                         info={{
@@ -639,7 +639,7 @@ class DocumentRow extends React.Component {
                     ? <StaticFileRow
                         key="pdf_uncompressed"
                         expanded={this.state.expanded}
-                        name={"PDF com texto (não comprimido)"}
+                        name={this.props.t("pdf with text uncompressed")}
                         filename={this.props.name}
                         type="pdf_uncompressed"
                         info={{
@@ -654,7 +654,7 @@ class DocumentRow extends React.Component {
                     ? <StaticFileRow
                         key="txt"
                         expanded={this.state.expanded}
-                        name={"Texto"}
+                        name={this.props.t("plain text file")}
                         filename={this.props.name}
                         type="txt"
                         info={info["txt"]}
@@ -666,7 +666,7 @@ class DocumentRow extends React.Component {
                     ? <StaticFileRow
                         key="txt_delimited"
                         expanded={this.state.expanded}
-                        name={"Texto com separadores de páginas"}
+                        name={this.props.t("text with page separators")}
                         filename={this.props.name}
                         type="txt_delimited"
                         info={info["txt_delimited"]}
@@ -678,7 +678,7 @@ class DocumentRow extends React.Component {
                     ? <StaticFileRow
                         key="csv"
                         expanded={this.state.expanded}
-                        name={"Índice de palavras em formato CSV"}
+                        name={this.props.t("word index csv")}
                         filename={this.props.name}
                         type="csv"
                         info={info["csv"]}
@@ -690,7 +690,7 @@ class DocumentRow extends React.Component {
                     ? <StaticFileRow
                         key="ner"
                         expanded={this.state.expanded}
-                        name={"Entidades"}
+                        name={this.props.t("entities")}
                         filename={this.props.name}
                         type="ner"
                         info={info["ner"]}
@@ -702,7 +702,7 @@ class DocumentRow extends React.Component {
                     ? <StaticFileRow
                         key="hocr"
                         expanded={this.state.expanded}
-                        name={"hOCR"}
+                        name={this.props.t("hocr")}
                         filename={this.props.name}
                         type="hocr"
                         info={info["hocr"]}
@@ -714,7 +714,7 @@ class DocumentRow extends React.Component {
                     ? <StaticFileRow
                         key="xml"
                         expanded={this.state.expanded}
-                        name={"ALTO"}
+                        name={this.props.t("alto")}
                         filename={this.props.name}
                         type="xml"
                         info={info["xml"]}
@@ -726,7 +726,7 @@ class DocumentRow extends React.Component {
                     ? <StaticFileRow
                         key="zip"
                         expanded={this.state.expanded}
-                        name={"Imagens extraídas"}
+                        name={this.props.t("extracted images")}
                         filename={this.props.name}
                         type="zip"
                         info={info["zip"]}

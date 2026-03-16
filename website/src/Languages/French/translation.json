@@ -3,7 +3,7 @@
     "login": "Se connecter",
     "private space": "Espace privé",
     "new folder": "Nouveau dossier",
-    "new document": "Nouveau document",
+    "new document": "Charger un document",
     "leave space": "Quitter l'espace",
     "back": "Retour",
     "start": "Accueil",
@@ -310,5 +310,20 @@
         "compression_fg_quality": "Qualité JPEG pour la couche de texte/premier plan (1-100). Des valeurs plus élevées préservent la clarté du texte. Recommandé : 70-90 pour un texte lisible. Par défaut : 80.",
         "compression_flatten": "Lorsqu'activé, combine toutes les couches en une seule image JPEG. Crée des PDF plus simples mais une compression moins efficace. Désactivez pour une meilleure compression (utilise MRC - Contenu Raster Mixte avec des couches séparées pour l'arrière-plan et le texte).",
         "output_formats": "Sélectionnez un ou plusieurs formats de sortie :\n• PDF avec index : PDF consultable avec coordonnées au niveau des mots\n• PDF avec texte : PDF consultable standard (recommandé)\n• Texte brut : Texte uniquement, sans formatage\n• Texte délimité par page : Texte avec séparateurs de page\n• CSV : Coordonnées des mots au format tableur\n• NER : Entités nommées (personnes, lieux, organisations)\n• hOCR/ALTO : Formats structurés avec informations détaillées de mise en page"
-    }
+    },
+    "confirm delete": "Êtes-vous sûr de vouloir supprimer",
+    "page count": "page(s)",
+    "download starting": "Votre téléchargement va commencer dans quelques instants",
+    "uncompressed": "non compressé",
+    "pdf with index": "PDF avec texte et index des mots",
+    "pdf with index uncompressed": "PDF avec texte et index (non compressé)",
+    "pdf with text": "PDF avec texte",
+    "pdf with text uncompressed": "PDF avec texte (non compressé)",
+    "plain text file": "Texte",
+    "text with page separators": "Texte avec séparateurs de page",
+    "word index csv": "Index des mots au format CSV",
+    "entities": "Entités",
+    "hocr": "hOCR",
+    "alto": "ALTO",
+    "extracted images": "Images extraites"
 }

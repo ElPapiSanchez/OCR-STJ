@@ -3,7 +3,7 @@
     "login": "Iniciar sessão",
     "private space": "Espaço Privado",
     "new folder": "Nova Pasta",
-    "new document": "Novo Documento",
+    "new document": "Carregar Documento",
     "leave space": "Sair do Espaço",
     "back": "Voltar",
     "start": "Início",
@@ -315,5 +315,20 @@
         "compression_fg_quality": "Qualidade JPEG para texto/camada de primeiro plano (1-100). Valores mais altos preservam a clareza do texto. Recomendado: 70-90 para texto legível. Padrão: 80.",
         "compression_flatten": "Quando ativado, combina todas as camadas numa única imagem JPEG. Cria PDFs mais simples mas compressão menos eficiente. Desative para melhor compressão (usa MRC - Conteúdo Raster Misto com camadas separadas de fundo e texto).",
         "output_formats": "Selecione um ou mais formatos de saída:\n• PDF com índice: PDF pesquisável com coordenadas ao nível de palavra\n• PDF com texto: PDF pesquisável padrão (recomendado)\n• Texto simples: Apenas texto, sem formatação\n• Texto delimitado por página: Texto com separadores de página\n• CSV: Coordenadas de palavras em formato de folha de cálculo\n• NER: Entidades nomeadas (pessoas, locais, organizações)\n• hOCR/ALTO: Formatos estruturados com informação detalhada de layout"
-    }
+    },
+    "confirm delete": "Tem a certeza que quer apagar",
+    "page count": "página(s)",
+    "download starting": "O seu download vai começar em breves momentos",
+    "uncompressed": "não comprimido",
+    "pdf with index": "PDF com texto e índice de palavras",
+    "pdf with index uncompressed": "PDF com texto e índice (não comprimido)",
+    "pdf with text": "PDF com texto",
+    "pdf with text uncompressed": "PDF com texto (não comprimido)",
+    "plain text file": "Texto",
+    "text with page separators": "Texto com separadores de páginas",
+    "word index csv": "Índice de palavras em formato CSV",
+    "entities": "Entidades",
+    "hocr": "hOCR",
+    "alto": "ALTO",
+    "extracted images": "Imagens extraídas"
 }

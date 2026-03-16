@@ -751,7 +751,7 @@ class FileExplorer extends React.Component {
                 return response.json();
             }
 
-            this.successNot.current.setMessage("O seu download vai começar em breves momentos.")
+            this.successNot.current.setMessage(this.props.t("download starting"))
             this.successNot.current.open();
             return response.blob()
         })
@@ -968,8 +968,8 @@ class FileExplorer extends React.Component {
                         sizeB = Number(sizeB[0]) * (sizeMap[sizeB[1]] || 1);
                         return order * (sizeA - sizeB);
                     } else {
-                        let sizeA = a.props.info?.["total_size"]?.split(" ") ?? _zerobytes;
-                        let sizeB = b.props.info?.["total_size"]?.split(" ") ?? _zerobytes;
+                        let sizeA = a.props.info?.["size"]?.split(" ") ?? _zerobytes;
+                        let sizeB = b.props.info?.["size"]?.split(" ") ?? _zerobytes;
                         sizeA = Number(sizeA[0]) * (sizeMap[sizeA[1]] || 1);
                         sizeB = Number(sizeB[0]) * (sizeMap[sizeB[1]] || 1);
                         return order * (sizeA - sizeB);

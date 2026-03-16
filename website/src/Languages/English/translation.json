@@ -3,7 +3,7 @@
     "login": "Log in",
     "private space": "Private Space",
     "new folder": "New Folder",
-    "new document": "New Document",
+    "new document": "Upload Document",
     "leave space": "Leave Space",
     "back": "Back",
     "start": "Start",
@@ -315,5 +315,20 @@
         "compression_fg_quality": "JPEG quality for text/foreground layer (1-100). Higher values preserve text clarity. Recommended: 70-90 for readable text. Default: 80.",
         "compression_flatten": "When enabled, combines all layers into a single JPEG image. Creates simpler PDFs but less efficient compression. Disable for best compression (uses MRC - Mixed Raster Content with separate background and text layers).",
         "output_formats": "Select one or more output formats:\n• PDF with index: Searchable PDF with word-level coordinates\n• PDF with text: Standard searchable PDF (recommended)\n• Plain text: Text only, no formatting\n• Page-delimited text: Text with page separators\n• CSV: Word coordinates in spreadsheet format\n• NER: Named entities (people, places, organizations)\n• hOCR/ALTO: Structured formats with detailed layout information"
-    }
+    },
+    "confirm delete": "Are you sure you want to delete",
+    "page count": "page(s)",
+    "download starting": "Your download will start shortly",
+    "uncompressed": "uncompressed",
+    "pdf with index": "PDF with text and word index",
+    "pdf with index uncompressed": "PDF with text and index (uncompressed)",
+    "pdf with text": "PDF with text",
+    "pdf with text uncompressed": "PDF with text (uncompressed)",
+    "plain text file": "Text",
+    "text with page separators": "Text with page separators",
+    "word index csv": "Word index in CSV format",
+    "entities": "Entities",
+    "hocr": "hOCR",
+    "alto": "ALTO",
+    "extracted images": "Extracted images"
 }

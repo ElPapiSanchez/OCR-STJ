@@ -7,6 +7,7 @@ import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import ClickAwayListener from "@mui/material/ClickAwayListener";
+import { useTranslation } from "react-i18next";
 
 import Notification from 'Components/Notifications/Notification';
 
@@ -38,6 +39,7 @@ function ConfirmActionPopup(
         submitCallback = null,  // required
         cancelCallback = null,  // required
     }) {
+        const { t } = useTranslation();
         const successNotif = useRef(null);
         const errorNotif = useRef(null);
 
@@ -72,7 +74,7 @@ function ConfirmActionPopup(
                                     sx={{border: '1px solid black', mt: '0.5rem'}}
                                     onClick={() => submitCallback()}
                                 >
-                                    Confirmar
+                                    {t("confirm")}
                                 </Button>
                             </Box>
 

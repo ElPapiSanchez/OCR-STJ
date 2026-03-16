@@ -3,7 +3,7 @@
     "login": "登录",
     "private space": "私人空间",
     "new folder": "新建文件夹",
-    "new document": "新建文档",
+    "new document": "上传文档",
     "leave space": "离开空间",
     "back": "返回",
     "start": "开始",
@@ -310,5 +310,20 @@
         "compression_fg_quality": "文本/前景层的JPEG质量（1-100）。较高的值保持文本清晰度。推荐：可读文本为70-90。默认：80。",
         "compression_flatten": "启用时，将所有层合并为单个JPEG图像。创建更简单的PDF但压缩效率较低。禁用以获得最佳压缩（使用MRC - 混合光栅内容，具有独立的背景和文本层）。",
         "output_formats": "选择一种或多种输出格式：\n• 带索引的PDF：可搜索的PDF，带有词级坐标\n• 带文本的PDF：标准可搜索PDF（推荐）\n• 纯文本：仅文本，无格式\n• 分页文本：带页面分隔符的文本\n• CSV：电子表格格式的词坐标\n• NER：命名实体（人物、地点、组织）\n• hOCR/ALTO：带有详细布局信息的结构化格式"
-    }
+    },
+    "confirm delete": "您确定要删除",
+    "page count": "页",
+    "download starting": "您的下载即将开始",
+    "uncompressed": "未压缩",
+    "pdf with index": "带文本和单词索引的PDF",
+    "pdf with index uncompressed": "带文本和索引的PDF（未压缩）",
+    "pdf with text": "带文本的PDF",
+    "pdf with text uncompressed": "带文本的PDF（未压缩）",
+    "plain text file": "文本",
+    "text with page separators": "带页面分隔符的文本",
+    "word index csv": "CSV格式的单词索引",
+    "entities": "实体",
+    "hocr": "hOCR",
+    "alto": "ALTO",
+    "extracted images": "提取的图像"
 }
