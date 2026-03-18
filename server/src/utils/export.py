@@ -31,7 +31,7 @@ from src.utils.file import OUTPUTS_PATH
 from src.utils.file import PRIVATE_PATH
 from src.utils.file import size_to_units
 from src.utils.file import update_json_file
-from src.utils.image_compression import mrc_pdf_from_path, mrc_pdf_from_bytes
+from src.utils.image_compression import mrc_pdf_from_path, mrc_pdf_from_bytes, _read_image_dpi
 import fitz
 
 log = logging.getLogger(__name__)
@@ -93,6 +93,16 @@ def _export_pdf_compress_first(
     
     log.info(f"Found original file: {original_file_path}")
     
+    # Read original file bytes
+    with open(original_file_path, "rb") as f:
+        original_bytes = f.read()
+    
+    # Detect actual input DPI from file metadata
+    # Use 300 as fallback if DPI cannot be detected
+    dpi_original = _read_image_dpi(original_bytes, fallback=300.0)
+    log.info(f"Detected input DPI: {dpi_original}")
+    print(f"📐 Input DPI: {dpi_original}")
+    
     # Step 2: Compress original file
     print("\n" + "="*70)
     print("📦 COMPRESSING ORIGINAL FILE")
@@ -142,8 +152,10 @@ def _export_pdf_compress_first(
     temp_compressed_pdf = f"{files_path}/_temp_compressed_images.pdf"
     
     try:
-        with open(original_file_path, "rb") as f:
-            original_bytes = f.read()
+        # Save uncompressed copy if needed
+        if uncompressed_filename:
+            with open(uncompressed_filename, "wb") as f:
+                f.write(original_bytes)
         
         compressed_bytes = mrc_pdf_from_bytes(
             file_bytes=original_bytes,
@@ -151,14 +163,12 @@ def _export_pdf_compress_first(
             target_dpi=compression_target_dpi,
             render_dpi=dpi_original,
             output_pdf_path=temp_compressed_pdf,
-            output_uncompressed_pdf_path=uncompressed_filename,
             bg_format="JPEG",
             fg_format="JPEG",
             bg_quality=compression_bg_quality,
             fg_quality=compression_fg_quality,
             mask_method="cv",
             flatten_to_jpeg=compression_flatten,
-            progress_callback=compression_progress_callback,
         )
         
         compression_time = time.time() - start_time
@@ -175,7 +185,8 @@ def _export_pdf_compress_first(
             os.remove(temp_compressed_pdf)
         raise
     
-    # Step 3: Add OCR text layer directly to compressed PDF using PyMuPDF
+    # Step 3: Add OCR text directly to compressed PDF using PyMuPDF
+    # Use the SAME coordinate formula as non-compressed workflow (add_text_layer)
     print(f"📝 Adding OCR text layer to compressed PDF...")
     
     update_json_file(
@@ -189,7 +200,7 @@ def _export_pdf_compress_first(
     )
     
     try:
-        # Open compressed PDF with PyMuPDF
+        # Open compressed PDF with PyMuPDF for editing
         compressed_pdf = fitz.open(temp_compressed_pdf)
         
         # Get OCR results
@@ -201,17 +212,19 @@ def _export_pdf_compress_first(
         
         log.info(f"Found {len(ocr_files)} OCR result files")
         
-        # Calculate scale factor for coordinates
-        scale_factor = compression_target_dpi / dpi_original
-        log.info(f"Coordinate scale factor: {scale_factor}")
-        
         words = {}
         
         # Process each page
         for page_idx in range(min(len(compressed_pdf), len(ocr_files))):
             page = compressed_pdf[page_idx]
             page_rect = page.rect
+            page_width = page_rect.width
             page_height = page_rect.height
+            page_rotation = page.rotation
+            
+            log.info(f"Page {page_idx}: Rotation metadata: {page_rotation}°")
+            if page_rotation != 0:
+                log.warning(f"Page {page_idx}: Has non-zero rotation! This may affect text placement.")
             
             ocr_file = ocr_files[page_idx]
             hocr_path = os.path.join(ocr_results_path, ocr_file)
@@ -220,59 +233,93 @@ def _export_pdf_compress_first(
             with open(hocr_path, encoding="utf-8") as f:
                 hocrfile = json.load(f)
             
-            # Add text to page
+            # Get OCR image dimensions
+            max_x = max_y = 0
+            for section in hocrfile:
+                for line in section:
+                    for word in line:
+                        box = word["box"]
+                        max_x = max(max_x, box[2])
+                        max_y = max(max_y, box[3])
+            
+            # Calculate scale factor: OCR pixels → PDF points
+            # The compression function creates PDF pages using: width_pt = w_px * 72 / input_dpi
+            # So to convert OCR pixel coordinates to PDF points: pt = px * 72 / dpi_original
+            # Which means: scale_factor = 72 / dpi_original
+            
+            scale_from_bbox = page_width / max_x if max_x > 0 else None
+            scale_from_dpi = 72.0 / dpi_original
+            
+            # Use DPI-based scale as it's more reliable and matches compression logic
+            scale_factor = scale_from_dpi
+            
+            # OCR image height (in pixels) - used for Y-coordinate conversion
+            ocr_image_height = max_y
+            
+            log.info(f"Page {page_idx}: OCR bounding box max: {max_x:.0f}x{max_y:.0f}px")
+            log.info(f"Page {page_idx}: PDF page size: {page_width:.1f}x{page_height:.1f}pt")
+            log.info(f"Page {page_idx}: OCR image height in points: {ocr_image_height * scale_factor:.1f}pt")
+            log.info(f"Page {page_idx}: Scale from bbox: {scale_from_bbox:.6f}" if scale_from_bbox else f"Page {page_idx}: Scale from bbox: N/A")
+            log.info(f"Page {page_idx}: Scale from DPI (72/{dpi_original}): {scale_from_dpi:.6f}")
+            log.info(f"Page {page_idx}: Using scale factor: {scale_factor:.6f}")
+            
+            # Add text to page using EXACT same formula as add_text_layer()
             for section in hocrfile:
                 for line in section:
                     for word in line:
                         rawtext = word["text"]
-                        box = word["box"]  # [x0, y0, x1, y1] in original DPI
+                        box = word["box"]
+                        b = word["b"]  # baseline
                         
                         if not rawtext or not rawtext.strip():
                             continue
                         
-                        # Calculate scaled coordinates for compressed PDF
-                        x0 = box[0] * scale_factor
-                        y0 = box[1] * scale_factor
-                        x1 = box[2] * scale_factor
-                        y1 = box[3] * scale_factor
+                        # Convert OCR pixel coordinates to PDF point coordinates
+                        # X: straightforward scaling
+                        # Y: Direct scaling (no flip needed - compression already handles coordinate system)
+                        x_offset = box[0] * scale_factor
+                        y_offset = b * scale_factor
                         
-                        # Convert to PDF coordinate system (bottom-left origin)
-                        pdf_y0 = page_height - y1
-                        pdf_y1 = page_height - y0
+                        # Calculate box width for horizontal scaling
+                        box_width = (box[2] - box[0]) * scale_factor
                         
-                        # Calculate box dimensions
-                        box_width = x1 - x0
-                        box_height = y1 - y0
-                        
-                        # Estimate appropriate font size based on box height
-                        # Typically, font size is roughly 0.7-0.8 of the box height
-                        estimated_fontsize = box_height * 0.75
-                        
-                        # Create bounding box rectangle
-                        rect = fitz.Rect(x0, pdf_y0, x1, pdf_y1)
-                        
-                        # Insert text in the bounding box
-                        # PyMuPDF will try to fit the text within the rectangle
+                        # Insert text with horizontal scaling
                         try:
-                            page.insert_textbox(
-                                rect,
-                                rawtext,
-                                fontsize=estimated_fontsize,
-                                fontname="helv",  # Helvetica (built-in PDF font)
-                                render_mode=3,  # invisible text
-                                align=0,  # left-aligned
-                            )
-                        except:
-                            # Fallback to simple insert_text if textbox fails
+                            # Get text width to calculate scale
+                            text_width = fitz.get_text_length(rawtext, fontname="helv", fontsize=8)
+                            
+                            if text_width > 0:
+                                h_scale = box_width / text_width
+                            else:
+                                h_scale = 1.0
+                            
+                            # Create transformation matrix for horizontal scaling
+                            matrix = fitz.Matrix(h_scale, 1)
+                            
+                            # Insert invisible text
                             page.insert_text(
-                                point=(x0, page_height - (box[3] * scale_factor)),
-                                text=rawtext,
-                                fontsize=8,
+                                (x_offset, y_offset),
+                                rawtext,
                                 fontname="helv",
-                                render_mode=3,
+                                fontsize=8,
+                                render_mode=3,  # invisible
+                                morph=(fitz.Point(x_offset, y_offset), matrix)
                             )
+                        except Exception as e:
+                            log.debug(f"Failed to insert text '{rawtext}': {e}")
+                            # Simple fallback without scaling
+                            try:
+                                page.insert_text(
+                                    (x_offset, y_offset),
+                                    rawtext,
+                                    fontname="helv",
+                                    fontsize=8,
+                                    render_mode=3,
+                                )
+                            except:
+                                pass
                         
-                        # Collect words for index if needed
+                        # Collect words for index
                         if generate_index:
                             w = rawtext.strip()
                             remove_chars = [",", ".", ":", ";", "!", "?", '"', "'", "(", ")", "[", "]"]
@@ -299,11 +346,15 @@ def _export_pdf_compress_first(
                     },
                 )
         
-        # Save the modified compressed PDF to the target location
+        # Save the modified compressed PDF
         compressed_pdf.save(target, garbage=4, deflate=True, clean=True)
         compressed_pdf.close()
         
         log.info(f"PDF with OCR text layer saved to {target}")
+        
+        # Clean up temp compressed PDF
+        if os.path.exists(temp_compressed_pdf):
+            os.remove(temp_compressed_pdf)
         
         # Generate CSV index if needed
         if not simple and generate_index:
@@ -319,10 +370,6 @@ def _export_pdf_compress_first(
         # The CSV export above provides the index data
         if not simple and generate_index:
             log.warning("Index pages skipped for compressed PDF (use CSV export for index data)")
-        
-        # Clean up temp compressed PDF
-        if os.path.exists(temp_compressed_pdf):
-            os.remove(temp_compressed_pdf)
         
         final_size = os.path.getsize(target)
         print(f"\n✅ PDF EXPORT COMPLETE!")
@@ -347,12 +394,9 @@ def _export_pdf_compress_first(
     except Exception as e:
         log.error(f"Failed to build PDF: {e}", exc_info=True)
         print(f"\n❌ FAILED: {str(e)}")
-        # Clean up
+        # Clean up temp files
         if os.path.exists(temp_compressed_pdf):
             os.remove(temp_compressed_pdf)
-        for temp_img in temp_images:
-            if os.path.exists(temp_img):
-                os.remove(temp_img)
         raise
 
 
@@ -1007,19 +1051,21 @@ def export_pdf(
             else:
                 uncompressed_filename = f"{outputs_path}/{doc_basename}_indexed_uncompressed.pdf"
             
+            # Save uncompressed copy before compression
+            import shutil
+            shutil.copy2(target, uncompressed_filename)
+            
             compressed_pdf_bytes = mrc_pdf_from_path(
                 input_path=target,
                 target_dpi=compression_target_dpi,
                 render_dpi=compression_target_dpi,
                 output_pdf_path=target,
-                output_uncompressed_pdf_path=uncompressed_filename,
                 bg_format="JPEG",
                 fg_format="JPEG",
                 bg_quality=compression_bg_quality,
                 fg_quality=compression_fg_quality,
                 mask_method="cv",
                 flatten_to_jpeg=compression_flatten,
-                progress_callback=compression_progress_callback,
             )
             
             compression_time = time.time() - start_time
