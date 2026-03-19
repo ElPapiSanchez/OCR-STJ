@@ -7,7 +7,6 @@ import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
 import ClickAwayListener from "@mui/material/ClickAwayListener";
-import { withTranslation } from "react-i18next";
 
 import Notification from 'Components/Notifications/Notification';
 
@@ -135,6 +134,8 @@ DeletePopup.defaultProps = {
     _private: false,
     // functions:
     submitCallback: null,
+    // translation function passed from parent
+    t: (key) => key,
 }
 
-export default withTranslation()(DeletePopup);
+export default DeletePopup;

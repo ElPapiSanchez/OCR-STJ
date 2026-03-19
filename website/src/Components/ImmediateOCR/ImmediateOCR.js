@@ -248,60 +248,79 @@ class ImmediateOCR extends React.Component {
             // Translate backend status messages
             let statusMessage = data.status?.message || this.props.t('processing document');
             
-            // Check for compression messages in Portuguese and translate them
-            if (statusMessage.includes('A comprimir PDF')) {
-                if (statusMessage.includes('A iniciar')) {
-                    statusMessage = this.props.t('compressing pdf starting');
-                } else if (statusMessage.includes('A finalizar')) {
-                    statusMessage = this.props.t('compressing pdf finalizing');
-                } else if (statusMessage.match(/Página \d+\/\d+/)) {
+            // Check for OCR processing messages and translate them
+            if (statusMessage.includes('A processar OCR')) {
+                if (statusMessage.match(/Página \d+\/\d+/)) {
                     const match = statusMessage.match(/Página (\d+)\/(\d+)/);
                     if (match) {
-                        statusMessage = this.props.t('compressing pdf page', { current: match[1], total: match[2] });
+                        statusMessage = this.props.t('processing ocr page', { current: match[1], total: match[2] });
                     } else {
-                        statusMessage = this.props.t('compressing pdf');
+                        statusMessage = this.props.t('processing ocr');
                     }
+                } else {
+                    statusMessage = this.props.t('processing ocr');
+                }
+            }
+            // Check for compression messages in Portuguese and translate them
+            else if (statusMessage.includes('A comprimir')) {
+                if (statusMessage.includes('ficheiro original')) {
+                    statusMessage = this.props.t('compressing file');
                 } else if (statusMessage.includes('concluída')) {
                     statusMessage = this.props.t('compression complete');
                 } else {
                     statusMessage = this.props.t('compressing pdf');
                 }
             }
+            // Check for text layer messages and translate them
+            else if (statusMessage.includes('A adicionar texto')) {
+                if (statusMessage.match(/Página \d+\/\d+/)) {
+                    const match = statusMessage.match(/Página (\d+)\/(\d+)/);
+                    if (match) {
+                        statusMessage = this.props.t('adding text page', { current: match[1], total: match[2] });
+                    } else {
+                        statusMessage = this.props.t('adding text layer');
+                    }
+                } else if (statusMessage.includes('OCR')) {
+                    statusMessage = this.props.t('adding text layer');
+                }
+            }
+            // Check for completed status
+            else if (statusMessage.includes('Concluído')) {
+                statusMessage = this.props.t('completed');
+            }
             
-            // Calculate progress percentage based on stage
+            // Calculate progress percentage based on backend percentage if available
             let progressPercent = 0;
             const stage = data.status?.stage;
             
-            // Check if PDF outputs are requested (which may trigger compression)
-            const hasPdfOutput = outputFormats.pdf || outputFormats.pdf_indexed;
-            const willCompress = enableCompression && hasPdfOutput;
-            
-            if (stage === 'ocr') {
-                // OCR stage: map to 0-50% if compression will occur, otherwise 0-100%
-                const ocrProgress = data.ocr?.progress || 0;
-                const totalPages = data.pages || 1;
-                const ocrPercent = (ocrProgress / totalPages) * 100;
-                
-                if (willCompress) {
-                    // If compression enabled, OCR is 0-50%
-                    progressPercent = Math.min(50, ocrPercent * 0.5);
-                } else {
-                    // If no compression, OCR is 0-100%
-                    progressPercent = Math.min(100, ocrPercent);
-                }
-            } else if (stage === 'compressing') {
-                // Compression stage: map to 50-100%
-                const compressionProgress = data.status?.progress || 0;
-                progressPercent = 50 + (compressionProgress * 0.5);
-            } else if (stage === 'exporting') {
-                // Exporting stage: use 90-100%
-                progressPercent = willCompress ? 95 : 90;
-            } else if (stage === 'post-ocr') {
-                // Complete
-                progressPercent = 100;
+            // Use backend percentage if provided (new progress system)
+            if (data.status?.percentage !== undefined) {
+                progressPercent = data.status.percentage;
             } else {
-                // Default to raw progress value for other stages
-                progressPercent = data.ocr?.progress || 0;
+                // Fallback to old calculation for backwards compatibility
+                const hasPdfOutput = outputFormats.pdf || outputFormats.pdf_indexed;
+                const willCompress = enableCompression && hasPdfOutput;
+                
+                if (stage === 'ocr') {
+                    const ocrProgress = data.ocr?.progress || 0;
+                    const totalPages = data.pages || 1;
+                    const ocrPercent = (ocrProgress / totalPages) * 100;
+                    
+                    if (willCompress) {
+                        progressPercent = Math.min(50, ocrPercent * 0.5);
+                    } else {
+                        progressPercent = Math.min(100, ocrPercent);
+                    }
+                } else if (stage === 'compressing') {
+                    const compressionProgress = data.status?.progress || 0;
+                    progressPercent = 50 + (compressionProgress * 0.5);
+                } else if (stage === 'exporting') {
+                    progressPercent = willCompress ? 95 : 90;
+                } else if (stage === 'post-ocr') {
+                    progressPercent = 100;
+                } else {
+                    progressPercent = data.ocr?.progress || 0;
+                }
             }
             
             this.setState({ 

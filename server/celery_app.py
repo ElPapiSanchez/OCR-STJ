@@ -1318,15 +1318,24 @@ def task_page_ocr(
         ) as f:
             json.dump(page_json, f, indent=2, ensure_ascii=False)
 
-        # Performed OCR of page, update data
+        # Performed OCR of page, update data with percentage-based progress
         files = os.listdir(f"{files_path}/_ocr_results")
+        
+        # Check if compression is enabled to determine progress ranges
+        compress_enabled = config.get("compress", True) if isinstance(config, dict) else True
+        
+        # Calculate percentage: OCR takes 0-40% if compression, 0-80% if not
+        ocr_max_percent = 40 if compress_enabled else 80
+        pages_done = len(files)
+        ocr_percentage = int((pages_done / n_doc_pages) * ocr_max_percent)
 
         data = get_data(data_file)
-        data["ocr"]["progress"] = len(files)
+        data["ocr"]["progress"] = pages_done
         if data["status"]["stage"] != "error":
             data["status"] = {
                 "stage": "ocr",
-                "message": f"({ocr_engine.estimate_ocr_time(config, n_doc_pages - len(files))})",
+                "message": f"A processar OCR - Página {pages_done}/{n_doc_pages}",
+                "percentage": ocr_percentage,
             }
         update_json_file(data_file, data)
 

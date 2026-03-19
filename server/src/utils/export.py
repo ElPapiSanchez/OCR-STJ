@@ -114,7 +114,7 @@ def _export_pdf_compress_first(
             "status": {
                 "stage": "compressing",
                 "message": "A comprimir ficheiro original...",
-                "progress": 0,
+                "percentage": 41,  # Compression starts at 41%
             }
         },
     )
@@ -122,23 +122,6 @@ def _export_pdf_compress_first(
     original_size = os.path.getsize(original_file_path)
     print(f"📄 Input: {original_file_path}")
     print(f"📊 Size: {size_to_units(original_size)}")
-    
-    def compression_progress_callback(current_page, total_pages, stage):
-        progress_percent = (current_page / total_pages * 100) if total_pages > 0 else 0
-        if stage == "processing":
-            message = f"A comprimir - Página {current_page}/{total_pages}"
-        else:
-            message = "A comprimir..."
-        update_json_file(
-            data_file,
-            {
-                "status": {
-                    "stage": "compressing",
-                    "message": message,
-                    "progress": progress_percent,
-                }
-            },
-        )
     
     start_time = time.time()
     
@@ -178,6 +161,18 @@ def _export_pdf_compress_first(
         print(f"\n✅ Compressed: {size_to_units(compressed_size)} ({compression_ratio:.1f}% reduction)")
         log.info(f"Compression complete in {compression_time:.2f}s")
         
+        # Update to 95% after compression completes
+        update_json_file(
+            data_file,
+            {
+                "status": {
+                    "stage": "compressing",
+                    "message": "Compressão concluída",
+                    "percentage": 95,
+                }
+            },
+        )
+        
     except Exception as e:
         log.error(f"Compression failed: {e}")
         print(f"\n❌ COMPRESSION FAILED: {str(e)}")
@@ -195,6 +190,7 @@ def _export_pdf_compress_first(
             "status": {
                 "stage": "exporting",
                 "message": "A adicionar texto OCR...",
+                "percentage": 95,
             }
         },
     )
@@ -203,14 +199,36 @@ def _export_pdf_compress_first(
         # Open compressed PDF with PyMuPDF for editing
         compressed_pdf = fitz.open(temp_compressed_pdf)
         
-        # Get OCR results
+        # Get OCR results - sort by numeric page number
         ocr_results_path = f"{files_path}/_ocr_results"
-        ocr_files = sorted([
+        ocr_files_unsorted = [
             f for f in os.listdir(ocr_results_path)
             if f.endswith(".json") and not f.startswith("_")
-        ], key=lambda x: int(re.search(r"_(\d+)", x).group(1)) if re.search(r"_(\d+)", x) else 0)
+        ]
+        
+        # Sort by extracting page number from filename
+        def get_page_number(filename):
+            match = re.search(r"_(\d+)\.json$", filename)
+            if match:
+                return int(match.group(1))
+            # Fallback: try to extract any number
+            match = re.search(r"(\d+)", filename)
+            return int(match.group(1)) if match else 0
+        
+        ocr_files = sorted(ocr_files_unsorted, key=get_page_number)
         
         log.info(f"Found {len(ocr_files)} OCR result files")
+        log.info(f"Compressed PDF has {len(compressed_pdf)} pages")
+        
+        # Debug: log first and last filenames to verify sorting
+        if len(ocr_files) > 0:
+            log.info(f"First OCR file: {ocr_files[0]}")
+            if len(ocr_files) > 1:
+                log.info(f"Last OCR file: {ocr_files[-1]}")
+            log.info(f"OCR files order: {[get_page_number(f) for f in ocr_files]}")
+        
+        if len(ocr_files) != len(compressed_pdf):
+            log.warning(f"Mismatch: {len(ocr_files)} OCR files but {len(compressed_pdf)} PDF pages!")
         
         words = {}
         
@@ -233,6 +251,22 @@ def _export_pdf_compress_first(
             with open(hocr_path, encoding="utf-8") as f:
                 hocrfile = json.load(f)
             
+            # Debug: log first word to verify page matching
+            first_word = None
+            if hocrfile and len(hocrfile) > 0:
+                for section in hocrfile:
+                    for line in section:
+                        for word in line:
+                            if word.get("text", "").strip():
+                                first_word = word["text"]
+                                break
+                        if first_word:
+                            break
+                    if first_word:
+                        break
+            
+            log.info(f"Page {page_idx}: OCR file '{ocr_file}' - First word: '{first_word}'")
+            
             # Get OCR image dimensions
             max_x = max_y = 0
             for section in hocrfile:
@@ -247,10 +281,11 @@ def _export_pdf_compress_first(
             # So to convert OCR pixel coordinates to PDF points: pt = px * 72 / dpi_original
             # Which means: scale_factor = 72 / dpi_original
             
+            # Calculate scale factor - use DPI-based scale
             scale_from_bbox = page_width / max_x if max_x > 0 else None
             scale_from_dpi = 72.0 / dpi_original
             
-            # Use DPI-based scale as it's more reliable and matches compression logic
+            # Use DPI-based scale as it matches how compression works
             scale_factor = scale_from_dpi
             
             # OCR image height (in pixels) - used for Y-coordinate conversion
@@ -335,22 +370,40 @@ def _export_pdf_compress_first(
                                     if str(page_idx + 1) not in words[w]["pages"].split(", "):
                                         words[w]["pages"] += f", {page_idx + 1}"
             
-            if page_idx % 10 == 0 or page_idx == len(ocr_files) - 1:
-                update_json_file(
-                    data_file,
-                    {
-                        "status": {
-                            "stage": "exporting",
-                            "message": f"A adicionar texto - Página {page_idx + 1}/{len(ocr_files)}",
-                        }
-                    },
-                )
+            # Update progress every page (95-100% range)
+            pages_done = page_idx + 1
+            total_pages = len(ocr_files)
+            # Map progress from 95% to 100% across all pages
+            export_percentage = 95 + int((pages_done / total_pages) * 5)
+            
+            update_json_file(
+                data_file,
+                {
+                    "status": {
+                        "stage": "exporting",
+                        "message": f"A adicionar texto - Página {pages_done}/{total_pages}",
+                        "percentage": export_percentage,
+                    }
+                },
+            )
         
         # Save the modified compressed PDF
         compressed_pdf.save(target, garbage=4, deflate=True, clean=True)
         compressed_pdf.close()
         
         log.info(f"PDF with OCR text layer saved to {target}")
+        
+        # Update to 100% when complete
+        update_json_file(
+            data_file,
+            {
+                "status": {
+                    "stage": "exporting",
+                    "message": "Concluído",
+                    "percentage": 100,
+                }
+            },
+        )
         
         # Clean up temp compressed PDF
         if os.path.exists(temp_compressed_pdf):
@@ -714,16 +767,42 @@ def export_pdf(
     simple_filename = f"{outputs_path}/_pdf.pdf"
     filename_csv = f"{outputs_path}/_index.csv"
 
-    dpi_original = 300
-    dpi_compressed = OUT_DEFAULT_DPI
-
+    # Determine target filename based on simple flag
     target = filename if not simple else simple_filename
-
+    
     if os.path.exists(target) and not force_recreate:
         return target
 
     data = get_data(data_file)
     original_extension = data["extension"].lower()
+    
+    # Get doc_basename for path construction
+    doc_basename = get_file_basename(files_path)
+    
+    # Detect actual input DPI from original file
+    # First, try to find the original input file
+    if inputs_path and os.path.isfile(inputs_path):
+        original_file_path = inputs_path
+    else:
+        # Construct path to original file
+        if "/" in files_path.replace(FILES_PATH, "").strip("/"):
+            parts = files_path.replace(FILES_PATH, "").strip("/").split("/")
+            folder_path = "/".join(parts[:-1])
+            original_file_path = f"{INPUTS_PATH}/{folder_path}/{doc_basename}.{original_extension}"
+        else:
+            original_file_path = f"{INPUTS_PATH}/{doc_basename}.{original_extension}"
+    
+    # Read actual DPI from file, fallback to 300 if not detectable
+    if os.path.exists(original_file_path):
+        with open(original_file_path, "rb") as f:
+            original_bytes_for_dpi = f.read()
+        dpi_original = _read_image_dpi(original_bytes_for_dpi, fallback=300.0)
+        log.info(f"Detected input DPI: {dpi_original}")
+    else:
+        dpi_original = 300.0
+        log.warning(f"Could not find original file at {original_file_path}, using default DPI: {dpi_original}")
+    
+    dpi_compressed = OUT_DEFAULT_DPI
     
     # Define compression defaults
     COMPRESSION_DEFAULTS = {
@@ -745,7 +824,6 @@ def export_pdf(
     
     log.info(f"Compression settings: target_dpi={compression_target_dpi}, bg_quality={compression_bg_quality}, fg_quality={compression_fg_quality}, flatten={compression_flatten}")
 
-    doc_basename = get_file_basename(files_path)
     generate_index = get_csv or not simple
 
     # WORKFLOW DECISION: For PDF/TIF with compression, use compress-first workflow

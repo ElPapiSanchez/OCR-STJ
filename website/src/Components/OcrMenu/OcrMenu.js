@@ -443,21 +443,11 @@ class OcrMenu extends React.Component {
                         disabled={!valid || !this.state.uncommittedChanges}
                         color="success"
                         variant="contained"
-                        className="menuFunctionButton"
+                        className="menuFunctionButton noMarginRight"
                         startIcon={<SaveIcon />}
                         onClick={() => this.saveConfig()}
                     >
                         {this.props.t("save")}
-                    </Button>
-                    <Button
-                        disabled={!valid || !this.state.uncommittedChanges}
-                        variant="contained"
-                        color="success"
-                        className="menuFunctionButton noMarginRight"
-                        startIcon={<CheckRoundedIcon />}
-                        onClick={() => this.saveConfig(true)}
-                    >
-                        {this.props.t("finish")}
                     </Button>
                 </Box>
             </Box>

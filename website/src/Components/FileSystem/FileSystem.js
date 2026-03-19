@@ -820,6 +820,16 @@ class FileExplorer extends React.Component {
      * Open the delete menu
      */
     deleteItem(filename) {
+        console.log('deleteItem called with:', filename);
+        console.log('deletePopup ref:', this.deletePopup);
+        console.log('deletePopup.current:', this.deletePopup.current);
+        
+        if (!this.deletePopup || !this.deletePopup.current) {
+            console.error('DeletePopup ref is not available!');
+            this.errorNot.current.openNotif('Error: Delete popup is not available. Please refresh the page.');
+            return;
+        }
+        
         let path = this.props.current_folder;
         if (this.props._private) { path = this.props.spaceId + '/' + path }
         this.deletePopup.current.openMenu(path, filename);
@@ -1361,6 +1371,12 @@ class FileExplorer extends React.Component {
         return (
             <>
                 <FullStorageMenu ref={this.storageMenu}/>
+                <DeletePopup
+                    ref={this.deletePopup}
+                    _private={this.props._private}
+                    submitCallback={this.fetchFiles}
+                    t={this.props.t}
+                />
                 {
                     this.props.ocrMenu
                         ? <OcrMenu _private={this.props._private}
@@ -1484,11 +1500,6 @@ class FileExplorer extends React.Component {
                                             _private={this.props._private}
                                             submitCallback={this.fetchInfo}
                                             showStorageForm={this.showStorageForm}
-                                        />
-                                        <DeletePopup
-                                            ref={this.deletePopup}
-                                            _private={this.props._private}
-                                            submitCallback={this.fetchFiles}
                                         />
                                         {
                                             this.props._private && this.state.fetched
