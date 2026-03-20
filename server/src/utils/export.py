@@ -103,6 +103,16 @@ def _export_pdf_compress_first(
     log.info(f"Detected input DPI: {dpi_original}")
     print(f"📐 Input DPI: {dpi_original}")
     
+    # Detect number of pages in the original file for progress tracking
+    try:
+        temp_doc = fitz.open(stream=original_bytes, filetype=original_extension.lstrip('.'))
+        n_pages = len(temp_doc)
+        temp_doc.close()
+    except Exception as e:
+        log.warning(f"Could not detect page count: {e}")
+        n_pages = 1  # Fallback to single page
+    log.info(f"Document has {n_pages} page(s)")
+    
     # Step 2: Compress original file
     print("\n" + "="*70)
     print("📦 COMPRESSING ORIGINAL FILE")
@@ -140,6 +150,24 @@ def _export_pdf_compress_first(
             with open(uncompressed_filename, "wb") as f:
                 f.write(original_bytes)
         
+        # Define compression progress callback
+        def compression_progress(page_num, total_pages):
+            # Compression is 41% to 95%, so 54% range
+            progress_in_stage = (page_num / total_pages)
+            percentage = int(41 + progress_in_stage * 54)
+            update_json_file(
+                data_file,
+                {
+                    "status": {
+                        "stage": "compressing",
+                        "message": "compressing file page",
+                        "current": page_num,
+                        "total": total_pages,
+                        "percentage": percentage,
+                    }
+                },
+            )
+        
         compressed_bytes = mrc_pdf_from_bytes(
             file_bytes=original_bytes,
             filetype=original_extension,
@@ -152,6 +180,7 @@ def _export_pdf_compress_first(
             fg_quality=compression_fg_quality,
             mask_method="cv",
             flatten_to_jpeg=compression_flatten,
+            progress_callback=compression_progress,
         )
         
         compression_time = time.time() - start_time

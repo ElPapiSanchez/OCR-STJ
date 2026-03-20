@@ -269,6 +269,7 @@
     "processing ocr": "A processar OCR",
     "processing ocr page": "A processar OCR - Página {{current}}/{{total}}",
     "compressing file": "A comprimir ficheiro original...",
+    "compressing file page": "A comprimir - Página {{current}}/{{total}}",
     "adding text layer": "A adicionar texto OCR...",
     "adding text page": "A adicionar texto - Página {{current}}/{{total}}",
     "completed": "Concluído",

@@ -269,6 +269,7 @@
     "processing ocr": "Обработка OCR",
     "processing ocr page": "Обработка OCR - Страница {{current}}/{{total}}",
     "compressing file": "Сжатие исходного файла...",
+    "compressing file page": "Сжатие - Страница {{current}}/{{total}}",
     "adding text layer": "Добавление текстового слоя OCR...",
     "adding text page": "Добавление текста - Страница {{current}}/{{total}}",
     "completed": "Завершено",

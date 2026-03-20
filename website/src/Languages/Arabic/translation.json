@@ -269,6 +269,7 @@
     "processing ocr": "معالجة OCR",
     "processing ocr page": "معالجة OCR - الصفحة {{current}}/{{total}}",
     "compressing file": "ضغط الملف الأصلي...",
+    "compressing file page": "ضغط - الصفحة {{current}}/{{total}}",
     "adding text layer": "إضافة طبقة نص OCR...",
     "adding text page": "إضافة نص - الصفحة {{current}}/{{total}}",
     "completed": "مكتمل",

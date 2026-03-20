@@ -269,6 +269,7 @@
     "processing ocr": "正在处理OCR",
     "processing ocr page": "正在处理OCR - 第{{current}}/{{total}}页",
     "compressing file": "正在压缩原始文件...",
+    "compressing file page": "正在压缩 - 第{{current}}/{{total}}页",
     "adding text layer": "正在添加OCR文本层...",
     "adding text page": "正在添加文本 - 第{{current}}/{{total}}页",
     "completed": "已完成",

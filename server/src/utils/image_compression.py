@@ -323,6 +323,7 @@ def mrc_pdf_from_bytes(
     inpaint_radius: int = 3,
     inpaint_dilate_px: int = 1,
     inpaint_post_blur: float = 1.5,
+    progress_callback: Optional[callable] = None,
 ) -> bytes:
     """
     Run the MRC-style pipeline on an in-memory PDF or TIFF and return the output PDF bytes.
@@ -343,6 +344,7 @@ def mrc_pdf_from_bytes(
         inpaint_radius: Radius for OpenCV inpaint algorithms.
         inpaint_dilate_px: Pixels to dilate the mask before inpainting (catches halos).
         inpaint_post_blur: Gaussian blur sigma applied after inpainting.
+        progress_callback: Optional callback function(page_num, total_pages) called after each page.
 
     Returns:
         PDF bytes.
@@ -366,6 +368,10 @@ def mrc_pdf_from_bytes(
         input_dpi = float(render_dpi) if render_dpi is not None else float(target_dpi)
         input_dpi = float(int(round(input_dpi)))  # PyMuPDF expects integer-ish DPI
         page_iter = _iter_pil_pages_from_pdf_bytes(file_bytes, render_dpi=int(round(input_dpi)))
+        # Count total pages for progress tracking
+        temp_doc = fitz.open(stream=file_bytes, filetype="pdf")
+        total_pages = len(temp_doc)
+        temp_doc.close()
     elif is_tiff:
         # For TIFFs, try to read metadata DPI unless overridden
         if render_dpi is not None:
@@ -378,6 +384,17 @@ def mrc_pdf_from_bytes(
             if input_dpi <= 0:
                 input_dpi = float(target_dpi)
         page_iter = _iter_pil_pages_from_tiff_bytes(file_bytes)
+        # Count TIFF pages
+        bio = io.BytesIO(file_bytes)
+        timg = Image.open(bio)
+        total_pages = 1
+        try:
+            while True:
+                timg.seek(timg.tell() + 1)
+                total_pages += 1
+        except EOFError:
+            pass
+        bio.close()
     else:
         # JPEG / PNG: read DPI from metadata, fall back to target_dpi
         if render_dpi is not None:
@@ -385,8 +402,10 @@ def mrc_pdf_from_bytes(
         else:
             input_dpi = _read_image_dpi(file_bytes, fallback=float(target_dpi))
         page_iter = _iter_pil_pages_from_image_bytes(file_bytes)
+        total_pages = 1  # Single image
 
     logger.info(f"Input DPI: {input_dpi}, Target DPI: {target_dpi}")
+    logger.info(f"Total pages to compress: {total_pages}")
     
     # Downsample scale (true downsampling)
     scale = (target_dpi / input_dpi) if input_dpi > target_dpi else 1.0
@@ -531,6 +550,10 @@ def mrc_pdf_from_bytes(
 
             page.insert_image(rect, stream=bg_bytes, overlay=False)
             page.insert_image(rect, stream=fg_bytes, mask=mask_bytes, overlay=True)
+        
+        # Call progress callback after each page
+        if progress_callback:
+            progress_callback(page_index, total_pages)
 
     logger.info("Finalizing PDF output")
     out_doc.set_xml_metadata(_build_pdfa2b_xmp())

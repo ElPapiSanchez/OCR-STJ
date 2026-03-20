@@ -248,8 +248,31 @@ class ImmediateOCR extends React.Component {
             // Translate backend status messages
             let statusMessage = data.status?.message || this.props.t('processing document');
             
-            // Check for OCR processing messages and translate them
-            if (statusMessage.includes('A processar OCR')) {
+            // Check if message is a translation key and use current/total fields if present
+            if (statusMessage === 'processing ocr page' && data.status?.current && data.status?.total) {
+                statusMessage = this.props.t('processing ocr page', { current: data.status.current, total: data.status.total });
+            }
+            else if (statusMessage === 'compressing file page' && data.status?.current && data.status?.total) {
+                statusMessage = this.props.t('compressing file page', { current: data.status.current, total: data.status.total });
+            }
+            else if (statusMessage === 'adding text page' && data.status?.current && data.status?.total) {
+                statusMessage = this.props.t('adding text page', { current: data.status.current, total: data.status.total });
+            }
+            // Handle translation keys without parameters
+            else if (statusMessage === 'processing ocr') {
+                statusMessage = this.props.t('processing ocr');
+            }
+            else if (statusMessage === 'compressing file') {
+                statusMessage = this.props.t('compressing file');
+            }
+            else if (statusMessage === 'adding text layer') {
+                statusMessage = this.props.t('adding text layer');
+            }
+            else if (statusMessage === 'completed') {
+                statusMessage = this.props.t('completed');
+            }
+            // Legacy: Check for OCR processing messages in Portuguese and translate them
+            else if (statusMessage.includes('A processar OCR')) {
                 if (statusMessage.match(/Página \d+\/\d+/)) {
                     const match = statusMessage.match(/Página (\d+)\/(\d+)/);
                     if (match) {
@@ -261,9 +284,20 @@ class ImmediateOCR extends React.Component {
                     statusMessage = this.props.t('processing ocr');
                 }
             }
-            // Check for compression messages in Portuguese and translate them
+            // Legacy: Check for compression messages in Portuguese and translate them
             else if (statusMessage.includes('A comprimir')) {
-                if (statusMessage.includes('ficheiro original')) {
+                if (statusMessage.match(/Página \d+\/\d+/)) {
+                    const match = statusMessage.match(/Página (\d+)\/(\d+)/);
+                    if (match) {
+                        statusMessage = this.props.t('compressing file page', { current: match[1], total: match[2] });
+                    } else if (statusMessage.includes('ficheiro original')) {
+                        statusMessage = this.props.t('compressing file');
+                    } else if (statusMessage.includes('concluída')) {
+                        statusMessage = this.props.t('compression complete');
+                    } else {
+                        statusMessage = this.props.t('compressing pdf');
+                    }
+                } else if (statusMessage.includes('ficheiro original')) {
                     statusMessage = this.props.t('compressing file');
                 } else if (statusMessage.includes('concluída')) {
                     statusMessage = this.props.t('compression complete');
@@ -271,7 +305,7 @@ class ImmediateOCR extends React.Component {
                     statusMessage = this.props.t('compressing pdf');
                 }
             }
-            // Check for text layer messages and translate them
+            // Legacy: Check for text layer messages and translate them
             else if (statusMessage.includes('A adicionar texto')) {
                 if (statusMessage.match(/Página \d+\/\d+/)) {
                     const match = statusMessage.match(/Página (\d+)\/(\d+)/);
@@ -284,7 +318,7 @@ class ImmediateOCR extends React.Component {
                     statusMessage = this.props.t('adding text layer');
                 }
             }
-            // Check for completed status
+            // Legacy: Check for completed status
             else if (statusMessage.includes('Concluído')) {
                 statusMessage = this.props.t('completed');
             }

@@ -915,37 +915,12 @@ class LayoutMenu extends React.Component {
 						<Button
                             disabled={saveDisabled}
 							variant="contained"
-                            className="menuFunctionButton"
+                            className="menuFunctionButton noMarginRight"
 							color="success"
 							startIcon={<SaveIcon />}
 							onClick={() => this.saveLayout()}
 						>
 							{this.props.t("save")}
-						</Button>
-                        </span></Tooltip>
-
-                        <Tooltip
-                            placement="top"
-                            title={
-                                this.state.segmentLoading
-                                    ? this.props.t("layout loading")
-                                : !this.state.uncommittedChanges
-                                    ? "Não há alterações"
-                                : "A obter informação do servidor"
-                            }
-                            disableFocusListener={!saveDisabled}
-                            disableHoverListener={!saveDisabled}
-                            disableTouchListener={!saveDisabled}
-                        ><span>
-						<Button
-                            disabled={saveDisabled}
-							variant="contained"
-							color="success"
-                            className="menuFunctionButton noMarginRight"
-                            startIcon={<CheckRoundedIcon />}
-							onClick={() => this.saveLayout(true)}
-						>
-							{this.props.t("finish")}
 						</Button>
                         </span></Tooltip>
 					</Box>
