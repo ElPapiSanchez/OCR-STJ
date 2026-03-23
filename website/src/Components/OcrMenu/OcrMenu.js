@@ -21,6 +21,11 @@ import Switch from "@mui/material/Switch";
 import MenuItem from "@mui/material/MenuItem";
 import Select from "@mui/material/Select";
 import InputLabel from "@mui/material/InputLabel";
+import Dialog from "@mui/material/Dialog";
+import DialogTitle from "@mui/material/DialogTitle";
+import DialogContent from "@mui/material/DialogContent";
+import DialogActions from "@mui/material/DialogActions";
+import SettingsIcon from "@mui/icons-material/Settings";
 
 import {
     defaultConfig,
@@ -74,6 +79,7 @@ class OcrMenu extends React.Component {
             uncommittedChanges: false,
             loaded: false,  // true if default configuration has been fetched and page is ready
             fetchingPreset: false,  // true if selected preset has been fetched
+            advancedDialogOpen: false,  // for advanced settings dialog
         }
 
         // Disable options restricted to single-page if configuring for multi-page documents
@@ -528,60 +534,10 @@ class OcrMenu extends React.Component {
                                sx={{
                                    "& input:focus:invalid + fieldset": {borderColor: "red", borderWidth: 2},
                                    flexGrow: 1,
-                                }}
+                               }}
                         />
                         <InfoTooltip title={this.props.t("ocr_help.dpi")} />
                     </Box>
-
-                    {/* Engine selector hidden - only TesserOCR is available
-                    <FormControl className="simpleDropdown borderTop">
-                        <FormLabel id="label-ocr-engine-select">{this.props.t("ocr engine")}</FormLabel>
-                        <RadioGroup
-                            aria-labelledby="label-ocr-engine-select"
-                            value={this.state.engine}
-                            onChange={(e) => this.changeEngine(e.target.value)}>
-                            {
-                                this.state.engineOptions.map((option) =>
-                                    <FormControlLabel value={option.value} control={<Radio disableRipple />} label={option.description}/>
-                                )
-                            }
-                        </RadioGroup>
-                    </FormControl>
-                    */}
-
-                    <FormControl className="simpleDropdown borderTop">
-                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                            <FormLabel id="label-engine-type-select">{this.props.t("engine mode")}</FormLabel>
-                            <InfoTooltip title={this.props.t("ocr_help.engine_mode")} />
-                        </Box>
-                        <RadioGroup
-                            aria-labelledby="label-engine-type-select"
-                            value={this.state.engineMode}
-                            onChange={(e) => this.changeEngineMode(e.target.value)}>
-                            {
-                                this.state.engineModeOptions.map((option) =>
-                                    <FormControlLabel value={option.value} control={<Radio disableRipple />} label={option.description}/>
-                                )
-                            }
-                        </RadioGroup>
-                    </FormControl>
-
-                    <FormControl className="simpleDropdown borderTop">
-                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                            <FormLabel id="label-segmentation-select">{this.props.t("segmentation")}</FormLabel>
-                            <InfoTooltip title={this.props.t("ocr_help.segmentation")} />
-                        </Box>
-                        <RadioGroup
-                            aria-labelledby="label-segmentation-select"
-                            value={this.state.segmentMode}
-                            onChange={(e) => this.changeSegmentationMode(e.target.value)}>
-                            {
-                                this.state.segmentModeOptions.map((option) =>
-                                    <FormControlLabel value={option.value} control={<Radio disableRipple />} label={option.description}/>
-                                )
-                            }
-                        </RadioGroup>
-                    </FormControl>
 
                     <FormControl className="simpleDropdown borderTop">
                         <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -600,19 +556,14 @@ class OcrMenu extends React.Component {
                         </RadioGroup>
                     </FormControl>
 
-                    <Box sx={{ display: 'flex', alignItems: 'flex-start', marginTop: '1rem' }}>
-                        <TextField ref={this.moreParams}
-                               label={this.props.t("aditional parameters")}
-                               value={this.state.otherParams}
-                               onChange={(e) => this.changeAdditionalParams(e.target.value)}
-                               variant='outlined'
-                               className="simpleInput borderTop"
-                               size="small"
-                               slotProps={{inputLabel: {sx: {top: "0.5rem"}}}}
-                               sx={{ flexGrow: 1 }}
-                        />
-                        <InfoTooltip title={this.props.t("ocr_help.additional_params")} />
-                    </Box>
+                    <Button
+                        variant="outlined"
+                        startIcon={<SettingsIcon />}
+                        onClick={() => this.setState({ advancedDialogOpen: true })}
+                        sx={{ mt: 2 }}
+                    >
+                        {this.props.t("advanced")}
+                    </Button>
                 </Box>
 
                 <Box sx={{
@@ -723,6 +674,71 @@ class OcrMenu extends React.Component {
                 <CircularProgress color="success" />
             </Box>
             }
+
+            {/* Advanced Settings Dialog */}
+            <Dialog
+                open={this.state.advancedDialogOpen}
+                onClose={() => this.setState({ advancedDialogOpen: false })}
+                maxWidth="md"
+                fullWidth
+            >
+                <DialogTitle>{this.props.t("advanced ocr settings")}</DialogTitle>
+                <DialogContent>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+                        <FormControl className="simpleDropdown">
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                <FormLabel id="label-engine-type-select">{this.props.t("engine mode")}</FormLabel>
+                                <InfoTooltip title={this.props.t("ocr_help.engine_mode")} />
+                            </Box>
+                            <RadioGroup
+                                aria-labelledby="label-engine-type-select"
+                                value={this.state.engineMode}
+                                onChange={(e) => this.changeEngineMode(e.target.value)}>
+                                {
+                                    this.state.engineModeOptions.map((option) =>
+                                        <FormControlLabel key={option.value} value={option.value} control={<Radio disableRipple />} label={option.description}/>
+                                    )
+                                }
+                            </RadioGroup>
+                        </FormControl>
+
+                        <FormControl className="simpleDropdown">
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                <FormLabel id="label-segmentation-select">{this.props.t("segmentation")}</FormLabel>
+                                <InfoTooltip title={this.props.t("ocr_help.segmentation")} />
+                            </Box>
+                            <RadioGroup
+                                aria-labelledby="label-segmentation-select"
+                                value={this.state.segmentMode}
+                                onChange={(e) => this.changeSegmentationMode(e.target.value)}>
+                                {
+                                    this.state.segmentModeOptions.map((option) =>
+                                        <FormControlLabel key={option.value} value={option.value} control={<Radio disableRipple />} label={option.description}/>
+                                    )
+                                }
+                            </RadioGroup>
+                        </FormControl>
+
+                        <Box sx={{ display: 'flex', alignItems: 'flex-start' }}>
+                            <TextField ref={this.moreParams}
+                                   label={this.props.t("aditional parameters")}
+                                   value={this.state.otherParams}
+                                   onChange={(e) => this.changeAdditionalParams(e.target.value)}
+                                   variant='outlined'
+                                   size="small"
+                                   fullWidth
+                                   sx={{ flexGrow: 1 }}
+                            />
+                            <InfoTooltip title={this.props.t("ocr_help.additional_params")} />
+                        </Box>
+                    </Box>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => this.setState({ advancedDialogOpen: false })} color="primary">
+                        {this.props.t("close")}
+                    </Button>
+                </DialogActions>
+            </Dialog>
         </>
         );
     }
