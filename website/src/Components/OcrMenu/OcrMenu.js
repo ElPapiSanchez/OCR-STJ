@@ -375,7 +375,6 @@ class OcrMenu extends React.Component {
     render() {
         const valid = (
             (this.state.dpiVal === null || this.state.dpiVal === "" || (/^[1-9][0-9]*$/.test(this.state.dpiVal)))
-            && this.state.lang.length !== 0
             && this.state.outputs.length !== 0
         );
         return (
