@@ -109,6 +109,11 @@ def get_structure(
     if segment_box:
         if isinstance(page, str):
             page = Image.open(page)  # get file descriptor
+        
+        # Convert palette mode images to RGB to avoid Tesseract crashes
+        if page.mode == 'P':
+            page = page.convert('RGB')
+        
         api.SetImage(page)
 
         if isinstance(segment_box, list):  # Batch multiple segments
@@ -121,8 +126,11 @@ def get_structure(
                     "width": math.ceil(box[2] - box[0]),
                     "height": math.ceil(box[3] - box[1]),
                 }
+                
                 api.SetRectangle(**coords)
+                
                 hocr = etree.fromstring(api.GetHOCRText(0), html.XHTMLParser())
+                
                 # TesserOCR result coordinates are relative to original page edges, not segment edges.
                 # No need to reposition the results according to segment coordinates.
                 results.append(parse_hocr(hocr, segment_box=None))
@@ -142,6 +150,9 @@ def get_structure(
     elif not single_page:
         if isinstance(page, str):
             page = Image.open(page)  # get file descriptor
+        # Convert palette mode images to RGB to avoid Tesseract crashes
+        if page.mode == 'P':
+            page = page.convert('RGB')
         api.SetImage(page)
         hocr = etree.fromstring(api.GetHOCRText(0), html.XHTMLParser())
 

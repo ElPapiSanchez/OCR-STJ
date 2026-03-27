@@ -567,7 +567,24 @@ class ImmediateOCR extends React.Component {
                     
                     {/* Error Alert */}
                     {hasError && errorMessage && (
-                        <Alert severity="error" sx={{ mb: 3 }} onClose={() => this.setState({ errorMessage: '' })}>
+                        <Alert 
+                            severity="error" 
+                            sx={{ mb: 3 }}
+                            action={
+                                <Button 
+                                    color="inherit" 
+                                    size="small"
+                                    onClick={() => this.setState({ 
+                                        status: 'idle',
+                                        errorMessage: '',
+                                        docId: null,
+                                        progress: 0
+                                    })}
+                                >
+                                    {t('retry')}
+                                </Button>
+                            }
+                        >
                             {errorMessage}
                         </Alert>
                     )}

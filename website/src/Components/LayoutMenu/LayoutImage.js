@@ -145,6 +145,15 @@ class LayoutBox extends React.Component {
         mouseX = coords.x;
         mouseY = coords.y;
 
+        // Get image dimensions to constrain box within boundaries
+        const image = this.imageRef.current;
+        const maxX = image.naturalWidth;
+        const maxY = image.naturalHeight;
+
+        // Clamp coordinates to image boundaries
+        mouseX = Math.max(0, Math.min(mouseX, maxX));
+        mouseY = Math.max(0, Math.min(mouseY, maxY));
+
         switch (corner) {
             case 0:
                 this.setState({ top: mouseY, left: mouseX });
@@ -528,9 +537,23 @@ class LayoutImage extends React.Component {
         const initialCoords = this.screenToImageCoordinates(this.state.initialCoords.x, this.state.initialCoords.y);
         const finalCoords = this.screenToImageCoordinates(e.clientX - this.viewRef.current.offsetLeft + this.viewRef.current.scrollLeft + window.scrollX, e.clientY - this.viewRef.current.offsetTop + this.viewRef.current.scrollTop + window.scrollY);
 
+        // Get image dimensions to constrain box within boundaries
+        const image = this.imageRef.current;
+        const maxX = image.naturalWidth;
+        const maxY = image.naturalHeight;
+
+        // Clamp initial and final coordinates to image boundaries
+        initialCoords.x = Math.max(0, Math.min(initialCoords.x, maxX));
+        initialCoords.y = Math.max(0, Math.min(initialCoords.y, maxY));
+        finalCoords.x = Math.max(0, Math.min(finalCoords.x, maxX));
+        finalCoords.y = Math.max(0, Math.min(finalCoords.y, maxY));
+
         if (finalCoords.x - initialCoords.x < 150 && finalCoords.y - initialCoords.y < 150) {
             finalCoords.x = Math.max(finalCoords.x, initialCoords.x + 150);
             finalCoords.y = Math.max(finalCoords.y, initialCoords.y + 150);
+            // Re-clamp after minimum size adjustment
+            finalCoords.x = Math.min(finalCoords.x, maxX);
+            finalCoords.y = Math.min(finalCoords.y, maxY);
         }
 
         const newGroupData = {

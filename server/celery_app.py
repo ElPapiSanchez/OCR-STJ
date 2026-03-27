@@ -4,6 +4,7 @@ import logging as log
 import os
 import shutil
 import tempfile
+import time
 import traceback
 import uuid
 import zipfile
@@ -1244,40 +1245,102 @@ def task_page_ocr(
                 box_coords = (left, top, right, bottom)
                 box_coordinates_list.append(box_coords)
 
+        # Validate and clip bounding boxes to image dimensions to prevent Tesseract crashes
+        if box_coordinates_list:
+            # Load image temporarily just to get dimensions for validation
+            temp_image = image if image is not None else Image.open(image_filename)
+            img_width, img_height = temp_image.size
+            log.info(f"Image dimensions for {filename}: {img_width}x{img_height}px")
+            validated_boxes = []
+            
+            for idx, box in enumerate(box_coordinates_list):
+                left, top, right, bottom = box
+                log.info(f"Original box {idx+1} before validation: left={left}, top={top}, right={right}, bottom={bottom}")
+                
+                # Clip coordinates to image boundaries
+                left = max(0, min(left, img_width - 1))
+                top = max(0, min(top, img_height - 1))
+                right = max(left + 1, min(right, img_width))
+                bottom = max(top + 1, min(bottom, img_height))
+                
+                # Convert to integers (Tesseract requires integer coordinates)
+                left = int(round(left))
+                top = int(round(top))
+                right = int(round(right))
+                bottom = int(round(bottom))
+                
+                # Ensure box has valid dimensions and minimum size
+                width = right - left
+                height = bottom - top
+                
+                # Skip boxes that are too small (can cause crashes) or invalid
+                if width < 10 or height < 10:
+                    log.warning(f"Skipping too small box in {filename}: left={left}, top={top}, right={right}, bottom={bottom}, width={width}, height={height}")
+                    continue
+                
+                if right > left and bottom > top and left >= 0 and top >= 0:
+                    validated_boxes.append((left, top, right, bottom))
+                    log.info(f"Box {idx+1} ACCEPTED: left={left}, top={top}, right={right}, bottom={bottom}, width={width}, height={height}")
+                else:
+                    log.warning(f"Skipping invalid box in {filename}: left={left}, top={top}, right={right}, bottom={bottom}")
+            
+            box_coordinates_list = validated_boxes
+            log.info(f"Final: {len(validated_boxes)} validated boxes will be sent to Tesseract")
+            
+            # Log the actual validated box coordinates for debugging
+            for idx, box in enumerate(validated_boxes):
+                log.info(f"Final box {idx+1}: left={box[0]}, top={box[1]}, right={box[2]}, bottom={box[3]}, width={box[2]-box[0]}, height={box[3]-box[1]}")
+
         page_json = []
         if box_coordinates_list:
             if image is None:
                 image = Image.open(image_filename)
+            
             # Must OCR each text box. raw_results received but not expected, as currently can only be done with full page
 
-            if ocr_engine_name.lower() == "ocr_tesserocr":
-                # TesserOCR can load an image once and OCR multiple segments within it
-                all_jsons, raw_results = ocr_engine.get_structure(
-                    page=image,
-                    lang=lang,
-                    config=config,
-                    doc_path=files_path,
-                    outputs_path=outputs_path,
-                    segment_box=box_coordinates_list,
-                )
-            else:
-                all_jsons = []
-                # Get JSON result for each box and append to final list
-                for box in box_coordinates_list:
-                    box_json, raw_results = ocr_engine.get_structure(
+            try:
+                if ocr_engine_name.lower() == "ocr_tesserocr":
+                    # TesserOCR can load an image once and OCR multiple segments within it
+                    all_jsons, raw_results = ocr_engine.get_structure(
                         page=image,
                         lang=lang,
                         config=config,
                         doc_path=files_path,
                         outputs_path=outputs_path,
-                        segment_box=box,
+                        segment_box=box_coordinates_list,
                     )
-                    if box_json:
-                        all_jsons.append(box_json)
+                else:
+                    all_jsons = []
+                    # Get JSON result for each box and append to final list
+                    for box in box_coordinates_list:
+                        box_json, raw_results = ocr_engine.get_structure(
+                            page=image,
+                            lang=lang,
+                            config=config,
+                            doc_path=files_path,
+                            outputs_path=outputs_path,
+                            segment_box=box,
+                        )
+                        if box_json:
+                            all_jsons.append(box_json)
 
-            for json_result in all_jsons:
-                for paragraph in json_result:
-                    page_json.append(paragraph)
+                for json_result in all_jsons:
+                    for paragraph in json_result:
+                        page_json.append(paragraph)
+                        
+            except Exception as e:
+                log.error(f"OCR engine crashed for {filename} with segmented boxes: {e}")
+                traceback.print_exc()
+                # Mark this page as failed so the document can be retried
+                data = get_data(data_file)
+                data["ocr"]["exceptions"] = f"Erro na página {filename}: {str(e)}"
+                data["status"] = {
+                    "stage": "error",
+                    "message": f"Erro durante OCR da página {int(get_file_basename(filename).split('_')[-1]) + 1}",
+                }
+                update_json_file(data_file, data)
+                return {"status": "error"}
+                
         else:
             # OCR entire page, may have covered ignored areas
 
@@ -1297,18 +1360,32 @@ def task_page_ocr(
             compress_enabled = config.get("compress", True) if isinstance(config, dict) else True
             use_single_page = n_doc_pages == 1 and not compress_enabled
             
-            json_results, raw_results = ocr_engine.get_structure(
-                page=image,
-                lang=lang,
-                config=config,
-                doc_path=files_path,
-                outputs_path=outputs_path,
-                output_types=output_types,
-                # If single-page document, take advantage of output types to immediately generate results with Tesseract
-                # BUT: Skip this optimization if compression is enabled, as it bypasses the compression step
-                single_page=use_single_page,
-            )
-            page_json = json_results
+            try:
+                json_results, raw_results = ocr_engine.get_structure(
+                    page=image,
+                    lang=lang,
+                    config=config,
+                    doc_path=files_path,
+                    outputs_path=outputs_path,
+                    output_types=output_types,
+                    # If single-page document, take advantage of output types to immediately generate results with Tesseract
+                    # BUT: Skip this optimization if compression is enabled, as it bypasses the compression step
+                    single_page=use_single_page,
+                )
+                page_json = json_results
+                
+            except Exception as e:
+                log.error(f"OCR engine crashed for full page {filename}: {e}")
+                traceback.print_exc()
+                # Mark this page as failed so the document can be retried
+                data = get_data(data_file)
+                data["ocr"]["exceptions"] = f"Erro na página {filename}: {str(e)}"
+                data["status"] = {
+                    "stage": "error",
+                    "message": f"Erro durante OCR da página {int(get_file_basename(filename).split('_')[-1]) + 1}",
+                }
+                update_json_file(data_file, data)
+                return {"status": "error"}
 
         # Store formatted OCR output for the page in JSON
         with open(
@@ -1723,6 +1800,68 @@ def task_delete_file(path: str):
     os.remove(path)
 
 
+@celery.task(name="reset_stuck_ocr", priority=0)
+def task_reset_stuck_ocr():
+    """
+    Reset documents that have been stuck in OCR stage for too long.
+    This handles cases where worker crashes (SIGSEGV) leave documents in processing state.
+    """
+    import time
+    from datetime import datetime, timedelta
+    
+    reset_count = 0
+    stuck_threshold_minutes = 2  # Consider stuck if OCR running for more than 2 minutes without updates
+    
+    try:
+        # Scan all document folders in _files
+        if not os.path.exists(FILES_PATH):
+            return f"Files path does not exist"
+        
+        for root, dirs, files in os.walk(FILES_PATH):
+            if "_data.json" in files:
+                data_file = os.path.join(root, "_data.json")
+                try:
+                    with open(data_file, 'r') as f:
+                        data = json.load(f)
+                    
+                    # Check if document is stuck in OCR stage
+                    if data.get("status", {}).get("stage") == "ocr":
+                        # Check file modification time to see if it's been stuck
+                        file_mtime = os.path.getmtime(data_file)
+                        minutes_since_update = (time.time() - file_mtime) / 60
+                        
+                        if minutes_since_update > stuck_threshold_minutes:
+                            log.warning(f"Resetting stuck OCR document: {root} (stuck for {minutes_since_update:.1f} minutes)")
+                            
+                            # Reset status to error so user can retry
+                            data["status"] = {
+                                "stage": "error",
+                                "message": "OCR interrompido - pode tentar novamente",
+                            }
+                            
+                            # Reset OCR progress
+                            if "ocr" in data:
+                                data["ocr"]["progress"] = 0
+                            
+                            with open(data_file, 'w') as f:
+                                json.dump(data, f, indent=2, ensure_ascii=False)
+                            
+                            reset_count += 1
+                            
+                except Exception as e:
+                    log.error(f"Error checking {data_file}: {e}")
+                    continue
+        
+        if reset_count > 0:
+            log.info(f"Reset {reset_count} stuck OCR document(s)")
+        
+        return f"{reset_count} stuck document(s) reset"
+        
+    except Exception as e:
+        log.error(f"Error in reset_stuck_ocr task: {e}")
+        return f"Error: {str(e)}"
+
+
 #####################################
 # SCHEDULED TASKS
 #####################################
@@ -1740,6 +1879,16 @@ def setup_periodic_tasks(sender: Celery, **kwargs):
     )
     entry.save()
     log.info(f"Created periodic task {entry}")
+    
+    # Reset stuck OCR documents every 5 minutes
+    stuck_ocr_entry = RedBeatSchedulerEntry(
+        "reset_stuck_ocr",
+        task_reset_stuck_ocr.s().task,
+        crontab(minute="*/5"),  # Run every 5 minutes
+        app=celery,
+    )
+    stuck_ocr_entry.save()
+    log.info(f"Created periodic task {stuck_ocr_entry}")
 
 
 @celery.task(name="cleanup_private_spaces", priority=0)

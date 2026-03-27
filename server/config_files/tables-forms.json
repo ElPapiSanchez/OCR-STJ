@@ -1,6 +1,6 @@
 {
   "engine": "tesserocr",
-  "lang": [],
+  "lang": ["eng"],
   "outputs": ["pdf", "csv", "txt"],
   "engineMode": 3,
   "segmentMode": 11,
