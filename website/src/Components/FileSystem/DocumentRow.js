@@ -10,6 +10,7 @@ import TableRow from '@mui/material/TableRow';
 import {withTranslation} from "react-i18next";
 
 import DoneIcon from '@mui/icons-material/Done';
+import CancelIcon from '@mui/icons-material/Cancel';
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
 import BorderAllIcon from '@mui/icons-material/BorderAll';
 import BorderClearIcon from '@mui/icons-material/BorderClear';
@@ -222,6 +223,11 @@ class DocumentRow extends React.Component {
         this.props.performOCR(this.props.name, false, this.state.info?.["ocr"] !== undefined, customConfig);
     }
 
+    cancelOCR(e) {
+        e.stopPropagation();
+        this.props.cancelOCR(this.props.name);
+    }
+
     configureOCR(e, usingCustomConfig) {
         e.stopPropagation();
         const customConfig = usingCustomConfig ? this.state.info?.["config"] : null;
@@ -260,7 +266,7 @@ class DocumentRow extends React.Component {
         const usingCustomConfig = info["config"] && info["config"] !== "default";
         const hasLayoutBoxes = info["has_layout"];
         const status = info["status"];
-        const buttonsDisabled = !status || (status?.stage !== "waiting" && status?.stage !== "post-ocr");
+        const buttonsDisabled = !status || (status?.stage !== "waiting" && status?.stage !== "post-ocr" && status?.stage !== "cancelled");
         const uploadIsStuck = info["upload_stuck"] === true;
         return (
             <>
@@ -290,6 +296,17 @@ class DocumentRow extends React.Component {
                         </IconButton>
                         &nbsp;{this.props.t(info?.["ocr"] ? "repeat ocr" : "run ocr")}
                     </MenuItem>
+
+                    {(status?.stage === "ocr" || status?.stage === "exporting" || status?.stage === "compressing") && (
+                        <MenuItem
+                            onClick={(e) => this.cancelOCR(e)}
+                        >
+                            <IconButton className="negActionButton">
+                                <CancelIcon />
+                            </IconButton>
+                            &nbsp;{this.props.t("cancel ocr")}
+                        </MenuItem>
+                    )}
 
                     <MenuItem
                         disabled={buttonsDisabled && (status?.stage !== "error" || uploadIsStuck)}
@@ -521,6 +538,13 @@ class DocumentRow extends React.Component {
                         </Box>
                     </TableCell>
 
+                    : status?.stage === "cancelled"
+                    ? <TableCell className="explorerCell stateCell warningCell" align='left'>
+                        <Box className="stateBox">
+                            <span>{this.props.t("ocr cancelled")}</span>
+                        </Box>
+                    </TableCell>
+
                     : status?.stage === "ocr"
                     ? <TableCell className="explorerCell stateCell infoCell" align='left'>
                         <Box className="stateBox">
@@ -573,6 +597,14 @@ class DocumentRow extends React.Component {
                     ? <TableCell className="explorerCell stateCell successCell" align='left'>
                         <Box className="stateBox">
                             <DoneIcon color="primary" />
+                        </Box>
+                    </TableCell>
+
+                    : status?.stage === "cancelled"
+                    ? <TableCell className="explorerCell stateCell errorCell" align='left'>
+                        <Box className="stateBox">
+                            <CancelIcon sx={{ color: 'warning.main' }} />
+                            <span style={{ marginLeft: '0.5rem' }}>{this.props.t("ocr cancelled")}</span>
                         </Box>
                     </TableCell>
 
@@ -754,6 +786,7 @@ DocumentRow.defaultProps = {
     deleteItem: null,
     editText: null,
     performOCR: null,
+    cancelOCR: null,
     configureOCR: null,
     indexFile: null,
     removeIndexFile: null,

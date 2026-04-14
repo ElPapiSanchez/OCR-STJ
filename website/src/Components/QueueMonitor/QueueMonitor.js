@@ -14,6 +14,11 @@ import PendingActionsIcon from '@mui/icons-material/PendingActions';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import WorkIcon from '@mui/icons-material/Work';
+import CancelIcon from '@mui/icons-material/Cancel';
+import DeleteIcon from '@mui/icons-material/Delete';
+import Button from '@mui/material/Button';
+import Snackbar from '@mui/material/Snackbar';
+import Alert from '@mui/material/Alert';
 import { useTranslation } from 'react-i18next';
 
 const API_URL = `${window.location.protocol}//${window.location.host}/${process.env.REACT_APP_API_URL}`;
@@ -24,6 +29,7 @@ const QueueMonitor = ({ compact = false, autoRefresh = true, refreshInterval = 5
     const [queueData, setQueueData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
 
     const fetchQueueStatus = async () => {
         try {
@@ -40,6 +46,78 @@ const QueueMonitor = ({ compact = false, autoRefresh = true, refreshInterval = 5
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleCancelOCR = async (filePath) => {
+        if (!window.confirm(t('queue.cancel_confirm'))) {
+            return;
+        }
+
+        try {
+            const response = await axios.post(`${API_URL}/cancel-ocr`, { 
+                files_path: filePath 
+            });
+            
+            if (response.data.success) {
+                setSnackbar({
+                    open: true,
+                    message: t('queue.cancel_success'),
+                    severity: 'success'
+                });
+                fetchQueueStatus();
+            } else {
+                setSnackbar({
+                    open: true,
+                    message: t('queue.cancel_error') + ': ' + response.data.error,
+                    severity: 'error'
+                });
+            }
+        } catch (err) {
+            console.error('Error cancelling OCR:', err);
+            setSnackbar({
+                open: true,
+                message: t('queue.cancel_error') + ': ' + err.message,
+                severity: 'error'
+            });
+        }
+    };
+
+    const handleRemoveFromQueue = async (filePath) => {
+        if (!window.confirm(t('queue.remove_confirm'))) {
+            return;
+        }
+
+        try {
+            const response = await axios.post(`${API_URL}/remove-from-queue`, { 
+                files_path: filePath 
+            });
+            
+            if (response.data.success) {
+                setSnackbar({
+                    open: true,
+                    message: t('queue.remove_success'),
+                    severity: 'success'
+                });
+                fetchQueueStatus();
+            } else {
+                setSnackbar({
+                    open: true,
+                    message: t('queue.remove_error') + ': ' + response.data.error,
+                    severity: 'error'
+                });
+            }
+        } catch (err) {
+            console.error('Error removing from queue:', err);
+            setSnackbar({
+                open: true,
+                message: t('queue.remove_error') + ': ' + err.message,
+                severity: 'error'
+            });
+        }
+    };
+
+    const handleCloseSnackbar = () => {
+        setSnackbar({ ...snackbar, open: false });
     };
 
     useEffect(() => {
@@ -89,7 +167,7 @@ const QueueMonitor = ({ compact = false, autoRefresh = true, refreshInterval = 5
 
     if (!queueData) return null;
 
-    const { queue, workers, total_pending } = queueData;
+    const { queue, workers, total_pending, queued_files = [], processing_files = [] } = queueData;
 
     // Compact view for header/navbar
     if (compact) {
@@ -267,6 +345,131 @@ const QueueMonitor = ({ compact = false, autoRefresh = true, refreshInterval = 5
                 </Card>
             )}
 
+            {/* Currently Processing Files */}
+            {processing_files.length > 0 && (
+                <Card sx={{ backgroundColor: 'var(--card-bg)', boxShadow: 'var(--shadow-sm)', mt: 2 }}>
+                    <CardContent>
+                        <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600 }}>
+                            {t('queue.currently_processing_files') || 'Currently Processing Files'}
+                        </Typography>
+                        {processing_files.map((file, index) => (
+                            <Box 
+                                key={index} 
+                                sx={{ 
+                                    mb: 1.5,
+                                    padding: 1.5,
+                                    borderRadius: 1,
+                                    backgroundColor: 'var(--gray-50)',
+                                    border: '1px solid var(--border-color)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between'
+                                }}
+                            >
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
+                                    <PlayArrowIcon sx={{ color: 'var(--success-color)', fontSize: 20 }} />
+                                    <Box sx={{ flex: 1 }}>
+                                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                            {file.name}
+                                        </Typography>
+                                        <Typography variant="caption" color="textSecondary">
+                                            {file.path}
+                                        </Typography>
+                                        <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mt: 0.5 }}>
+                                            {file.message}
+                                        </Typography>
+                                    </Box>
+                                </Box>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <Chip 
+                                        label={`${file.percentage}%`}
+                                        size="small"
+                                        color="success"
+                                        variant="outlined"
+                                    />
+                                    <Tooltip title={t('queue.cancel')}>
+                                        <IconButton 
+                                            size="small"
+                                            color="error"
+                                            onClick={() => handleCancelOCR(file.path)}
+                                            sx={{ 
+                                                '&:hover': {
+                                                    backgroundColor: 'rgba(211, 47, 47, 0.1)'
+                                                }
+                                            }}
+                                        >
+                                            <CancelIcon fontSize="small" />
+                                        </IconButton>
+                                    </Tooltip>
+                                </Box>
+                            </Box>
+                        ))}
+                    </CardContent>
+                </Card>
+            )}
+
+            {/* Queued Files (Sequential Processing) */}
+            {queued_files.length > 0 && (
+                <Card sx={{ backgroundColor: 'var(--card-bg)', boxShadow: 'var(--shadow-sm)', mt: 2 }}>
+                    <CardContent>
+                        <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600 }}>
+                            {t('queue.queued_files') || 'Files Waiting in Sequential Queue'}
+                        </Typography>
+                        {queued_files.map((file, index) => (
+                            <Box 
+                                key={index} 
+                                sx={{ 
+                                    mb: 1.5,
+                                    padding: 1.5,
+                                    borderRadius: 1,
+                                    backgroundColor: 'var(--gray-50)',
+                                    border: '1px solid var(--border-color)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between'
+                                }}
+                            >
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
+                                    <ScheduleIcon sx={{ color: 'var(--warning-color)', fontSize: 20 }} />
+                                    <Box sx={{ flex: 1 }}>
+                                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                            {file.name}
+                                        </Typography>
+                                        <Typography variant="caption" color="textSecondary">
+                                            {file.path}
+                                        </Typography>
+                                    </Box>
+                                </Box>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    {file.position && (
+                                        <Chip 
+                                            label={`Position: ${file.position}`}
+                                            size="small"
+                                            color="warning"
+                                            variant="outlined"
+                                        />
+                                    )}
+                                    <Tooltip title={t('queue.remove')}>
+                                        <IconButton 
+                                            size="small"
+                                            color="error"
+                                            onClick={() => handleRemoveFromQueue(file.path)}
+                                            sx={{ 
+                                                '&:hover': {
+                                                    backgroundColor: 'rgba(211, 47, 47, 0.1)'
+                                                }
+                                            }}
+                                        >
+                                            <DeleteIcon fontSize="small" />
+                                        </IconButton>
+                                    </Tooltip>
+                                </Box>
+                            </Box>
+                        ))}
+                    </CardContent>
+                </Card>
+            )}
+
             {/* Workers Info */}
             {workers.length > 0 && (
                 <Card sx={{ backgroundColor: 'var(--card-bg)', boxShadow: 'var(--shadow-sm)', mt: 2 }}>
@@ -293,6 +496,17 @@ const QueueMonitor = ({ compact = false, autoRefresh = true, refreshInterval = 5
                     }
                 `}
             </style>
+
+            <Snackbar 
+                open={snackbar.open} 
+                autoHideDuration={6000} 
+                onClose={handleCloseSnackbar}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+            >
+                <Alert onClose={handleCloseSnackbar} severity={snackbar.severity} sx={{ width: '100%' }}>
+                    {snackbar.message}
+                </Alert>
+            </Snackbar>
         </Box>
     );
 };

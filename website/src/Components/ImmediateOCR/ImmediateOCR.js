@@ -644,7 +644,11 @@ class ImmediateOCR extends React.Component {
                                 <Box>
                                     <CheckboxList
                                         title={t('select languages')}
-                                        options={tesseractLangList()}
+                                        options={tesseractLangList().map(lang => ({
+                                            value: lang.value,
+                                            description: t(lang.translationKey),
+                                            disabled: lang.disabled
+                                        }))}
                                         checked={selectedLanguages}
                                         onChangeCallback={(checked) => this.setState({ selectedLanguages: checked })}
                                         required

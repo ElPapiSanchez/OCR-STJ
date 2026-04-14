@@ -102,7 +102,17 @@ def get_structure(
         psm=INT_TO_PSM[config.get("segmentMode", 3)],
         variables=config.get("otherParams", {}),
     )
-    api.SetVariable("thresholding_method", str(config.get("thresholdMethod", 0)))
+    
+    # If preprocessing already thresholded the image, bypass Tesseract thresholding
+    # This prevents double-thresholding which can degrade quality
+    preprocessing = config.get("preprocessing", {})
+    if preprocessing.get("enabled", True) and preprocessing.get("threshold_method", "adaptive_gaussian") != "none":
+        # Preprocessing already created binary image, tell Tesseract to skip thresholding
+        api.SetVariable("thresholding_method", "-1")  # Disable Tesseract thresholding
+    else:
+        # Use Tesseract's thresholding
+        api.SetVariable("thresholding_method", str(config.get("thresholdMethod", 0)))
+    
     api.SetVariable("user_defined_dpi", str(config.get("dpi", 0)))
 
     raw_results_paths = []
@@ -287,10 +297,10 @@ def verify_params(config):
             if output_format not in OUTPUTS:
                 errors.append(f'Formato de resultado: "{config["outputs"]}"')
 
-    if "dpi" in config and not isinstance(config["dpi"], (int, str)):
+    if "dpi" in config and config["dpi"] is not None and not isinstance(config["dpi"], (int, str)):
         errors.append(f'DPI: "{config["dpi"]}"')
 
-    if "otherParams" in config and not isinstance(config["otherParams"], dict):
+    if "otherParams" in config and config["otherParams"] is not None and not isinstance(config["otherParams"], dict):
         errors.append(f'Outros parâmetros: "{config["otherParams"]}"')
 
     return len(errors) == 0, errors

@@ -103,6 +103,13 @@ ADD https://raw.githubusercontent.com/tesseract-ocr/tessdata/refs/heads/main/eng
     https://raw.githubusercontent.com/tesseract-ocr/tessdata/refs/heads/main/deu.traineddata \
     https://raw.githubusercontent.com/tesseract-ocr/tessdata/refs/heads/main/fra.traineddata \
     https://raw.githubusercontent.com/tesseract-ocr/tessdata/refs/heads/main/spa.traineddata \
+    https://raw.githubusercontent.com/tesseract-ocr/tessdata/refs/heads/main/ara.traineddata \
+    https://raw.githubusercontent.com/tesseract-ocr/tessdata/refs/heads/main/ind.traineddata \
+    https://raw.githubusercontent.com/tesseract-ocr/tessdata/refs/heads/main/chi_sim.traineddata \
+    https://raw.githubusercontent.com/tesseract-ocr/tessdata/refs/heads/main/chi_tra.traineddata \
+    https://raw.githubusercontent.com/tesseract-ocr/tessdata/refs/heads/main/hin.traineddata \
+    https://raw.githubusercontent.com/tesseract-ocr/tessdata/refs/heads/main/ita.traineddata \
+    https://raw.githubusercontent.com/tesseract-ocr/tessdata/refs/heads/main/rus.traineddata \
     https://raw.githubusercontent.com/tesseract-ocr/tessdata/refs/heads/main/equ.traineddata \
     https://raw.githubusercontent.com/tesseract-ocr/tessdata/refs/heads/main/osd.traineddata \
     /usr/share/tesseract-ocr/5/tessdata/

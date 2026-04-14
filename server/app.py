@@ -1222,69 +1222,45 @@ def request_ocr():
             for f in os.scandir(files_path)
             if f.is_dir() and not f.name.startswith("_") and get_data(f"{f.path}/_data.json")["type"] == "file"
         ]
-    else:
-        files_list = [(files_path, outputs_path)]
+        log.info(f"📁 FOLDER OCR: Found {len(files_list)} file(s) to process in folder: {files_path}")
+        
+        # Initialize each file's status
+        for idx, (f_path, o_path) in enumerate(files_list, 1):
+            data_path = f"{f_path}/_data.json"
+            try:
+                data = get_data(data_path)
+            except FileNotFoundError:
+                abort(HTTPStatus.INTERNAL_SERVER_ERROR)
+            
+            basename = get_file_basename(f_path)
+            log.info(f"📄 Initializing file {idx}/{len(files_list)}: {basename}")
 
-    for f_path, o_path in files_list:
-        data_path = f"{f_path}/_data.json"
-        try:
-            data = get_data(data_path)
-        except FileNotFoundError:
-            abort(
-                HTTPStatus.INTERNAL_SERVER_ERROR
-            )  # TODO: improve feedback to users on error
+            # Determine which config to use
+            file_config = config
+            if file_config is None:
+                if "config" in data and data["config"] != "default":
+                    file_config = data["config"]
+                else:
+                    inherited = get_inherited_config(f_path, is_private)
+                    if inherited:
+                        file_config = inherited
 
-        # Determine which config to use (priority order):
-        # 1. Config passed in request
-        # 2. Document's own config
-        # 3. Inherited config from parent folders
-        file_config = config
-        if file_config is None:
-            # Check if document has its own config
-            if "config" in data and data["config"] != "default":
-                file_config = data["config"]
-            else:
-                # Try to inherit from parent folders
-                inherited = get_inherited_config(f_path, is_private)
-                if inherited:
-                    file_config = inherited
+            # Clean up old results
+            results_path = f"{f_path}/_ocr_results"
+            if os.path.exists(results_path):
+                shutil.rmtree(results_path)
+            os.makedirs(f"{f_path}/_ocr_results", exist_ok=True)
 
-        # Remove indexed pages, which will become outdated
-        results_path = f"{f_path}/_ocr_results"
+            if os.path.exists(o_path):
+                shutil.rmtree(o_path)
+            os.makedirs(o_path, exist_ok=True)
 
-        # FIXME: uncomment when searching feature is improved and re-enabled
-        """
-        pages = [
-            f
-            for f in os.scandir(results_path)
-            if os.path.splitext(f.name)[1] == ".json"
-        ]
-
-        if data.get("indexed", False):
-            for page in pages:
-                page_id = generate_uuid(page.path)
-                try:
-                    es.delete_document(page_id)
-                except NotFoundError:
-                    continue
-        """
-
-        # Delete previous results in _files
-        if os.path.exists(results_path):
-            shutil.rmtree(results_path)
-        os.makedirs(f"{f_path}/_ocr_results", exist_ok=True)
-
-        # Delete previous outputs in _outputs
-        if os.path.exists(o_path):
-            shutil.rmtree(o_path)
-        os.makedirs(o_path, exist_ok=True)
-
-        data.update(
-            {
+            # Update status to queued
+            data.update({
                 "ocr": {"progress": 0},
                 "status": {
-                    "stage": "ocr",
-                    "message": "A começar...",
+                    "stage": "queued",
+                    "message": f"Na fila (ficheiro {idx}/{len(files_list)})",
                 },
                 "pdf": {"complete": False},
                 "pdf_indexed": {"complete": False},
@@ -1296,11 +1272,80 @@ def request_ocr():
                 "xml": {"complete": False},
                 "zip": {"complete": False},
                 "indexed": False,
-            }
+            })
+            
+            if file_config:
+                data["config"] = file_config
+            
+            update_json_file(data_path, data)
+
+            if os.path.exists(f"{f_path}/_images"):
+                shutil.rmtree(f"{f_path}/_images")
+        
+        # Queue sequential processing via new task
+        celery.send_task(
+            "process_folder_sequential",
+            kwargs={
+                "files_list": files_list,
+                "config": config,
+                "is_private": is_private
+            },
+            ignore_result=True
         )
         
-        # Save the config being used (whether explicit, own, or inherited)
-        # This allows the UI to show what config is actually being applied
+        log.info(f"✅ FOLDER OCR: Sequential processing started for {len(files_list)} file(s)")
+    else:
+        # Single file processing - keep existing immediate queue behavior
+        files_list = [(files_path, outputs_path)]
+        
+        f_path, o_path = files_list[0]
+        data_path = f"{f_path}/_data.json"
+        try:
+            data = get_data(data_path)
+        except FileNotFoundError:
+            abort(HTTPStatus.INTERNAL_SERVER_ERROR)
+        
+        basename = get_file_basename(f_path)
+        log.info(f"📄 Starting OCR for: {basename}")
+
+        # Determine which config to use
+        file_config = config
+        if file_config is None:
+            if "config" in data and data["config"] != "default":
+                file_config = data["config"]
+            else:
+                inherited = get_inherited_config(f_path, is_private)
+                if inherited:
+                    file_config = inherited
+
+        # Clean up old results
+        results_path = f"{f_path}/_ocr_results"
+        if os.path.exists(results_path):
+            shutil.rmtree(results_path)
+        os.makedirs(f"{f_path}/_ocr_results", exist_ok=True)
+
+        if os.path.exists(o_path):
+            shutil.rmtree(o_path)
+        os.makedirs(o_path, exist_ok=True)
+
+        data.update({
+            "ocr": {"progress": 0},
+            "status": {
+                "stage": "ocr",
+                "message": "A começar...",
+            },
+            "pdf": {"complete": False},
+            "pdf_indexed": {"complete": False},
+            "txt": {"complete": False},
+            "txt_delimited": {"complete": False},
+            "csv": {"complete": False},
+            "ner": {"complete": False},
+            "hocr": {"complete": False},
+            "xml": {"complete": False},
+            "zip": {"complete": False},
+            "indexed": False,
+        })
+        
         if file_config:
             data["config"] = file_config
         
@@ -1316,7 +1361,7 @@ def request_ocr():
                 "config": file_config
             }, ignore_result=True
         )
-
+    
     return {
         "success": True,
         "message": "O OCR começou, por favor aguarde",
@@ -2148,6 +2193,57 @@ def get_queue_status():
         reserved_counts, reserved_total = count_tasks_by_name(reserved_tasks)
         scheduled_counts, scheduled_total = count_tasks_by_name(scheduled_tasks)
         
+        # Get documents in "queued" state (waiting for sequential processing)
+        queued_files = []
+        # Get documents currently being processed (for cancel feature)
+        processing_files = []
+        
+        if os.path.exists(FILES_PATH):
+            for root, dirs, files in os.walk(FILES_PATH):
+                if "_data.json" in files:
+                    data_file = os.path.join(root, "_data.json")
+                    try:
+                        data = get_data(data_file)
+                        status_stage = data.get("status", {}).get("stage", "")
+                        status_message = data.get("status", {}).get("message", "")
+                        
+                        if status_stage == "queued":
+                            basename = get_file_basename(root)
+                            # Extract queue position from message if available (format: "Na fila (ficheiro 1/4)")
+                            queue_position = None
+                            if "ficheiro" in status_message or "file" in status_message.lower():
+                                import re
+                                match = re.search(r'(\d+)/(\d+)', status_message)
+                                if match:
+                                    queue_position = f"{match.group(1)}/{match.group(2)}"
+                            
+                            queued_files.append({
+                                'name': basename,
+                                'path': root.replace(FILES_PATH, "").strip("/"),
+                                'position': queue_position,
+                                'message': status_message
+                            })
+                        
+                        # Also track currently processing files (ocr, compressing, exporting)
+                        elif status_stage in ["ocr", "compressing", "exporting"]:
+                            basename = get_file_basename(root)
+                            percentage = data.get("status", {}).get("percentage", 0)
+                            
+                            processing_files.append({
+                                'name': basename,
+                                'path': root.replace(FILES_PATH, "").strip("/"),
+                                'stage': status_stage,
+                                'message': status_message,
+                                'percentage': percentage
+                            })
+                    except Exception as e:
+                        continue
+        
+        # Sort queued files by position if available
+        queued_files.sort(key=lambda x: int(x['position'].split('/')[0]) if x.get('position') else 999)
+        # Sort processing files by percentage (showing highest progress first)
+        processing_files.sort(key=lambda x: x.get('percentage', 0), reverse=True)
+        
         # Get worker stats
         stats = inspect.stats()
         worker_info = []
@@ -2177,6 +2273,8 @@ def get_queue_status():
             },
             'workers': worker_info,
             'total_pending': reserved_total + scheduled_total,
+            'queued_files': queued_files,
+            'processing_files': processing_files,
         }
     except Exception as e:
         import logging as log
@@ -2191,7 +2289,201 @@ def get_queue_status():
             },
             'workers': [],
             'total_pending': 0,
+            'queued_files': [],
+            'processing_files': [],
         }
+
+
+@app.route("/cancel-ocr", methods=["POST"])
+def cancel_ocr():
+    """
+    Cancel OCR processing for a document and move to the next file in queue.
+    Expects JSON body with 'files_path' parameter.
+    """
+    import logging as log
+    
+    try:
+        data = request.get_json()
+        files_path = data.get("files_path")
+        
+        if not files_path:
+            return jsonify({
+                'success': False,
+                'error': 'files_path is required'
+            }), 400
+        
+        # Convert relative path to absolute if needed
+        if not files_path.startswith(FILES_PATH):
+            files_path = os.path.join(FILES_PATH, files_path.strip("/"))
+        
+        data_file = os.path.join(files_path, "_data.json")
+        
+        if not os.path.exists(data_file):
+            return jsonify({
+                'success': False,
+                'error': 'Document not found'
+            }), 404
+        
+        doc_data = get_data(data_file)
+        
+        basename = get_file_basename(files_path)
+        log.warning(f"🚫 CANCEL REQUEST received for {basename}, current status: {doc_data.get('status', {}).get('stage', 'unknown')}")
+        
+        # Clear OCR results from the cancelled OCR, but KEEP the _pages directory
+        # so the document can be re-OCR'd without re-uploading
+        ocr_results_path = os.path.join(files_path, "_ocr_results")
+        if os.path.exists(ocr_results_path):
+            shutil.rmtree(ocr_results_path, ignore_errors=True)
+            os.makedirs(ocr_results_path, exist_ok=True)
+        
+        # Clear outputs from cancelled OCR
+        outputs_path = files_path.replace("_files", "_outputs")
+        if os.path.exists(outputs_path):
+            for item in os.listdir(outputs_path):
+                item_path = os.path.join(outputs_path, item)
+                if os.path.isfile(item_path):
+                    try:
+                        os.remove(item_path)
+                    except:
+                        pass
+        
+        # Set to "cancelled" to signal running tasks to abort
+        doc_data["status"] = {
+            "stage": "cancelled",
+            "message": "Cancelado pelo utilizador",
+        }
+        # Clear percentage
+        if "percentage" in doc_data.get("status", {}):
+            del doc_data["status"]["percentage"]
+        
+        update_json_file(data_file, doc_data)
+        
+        log.warning(f"🚫 {basename}: Status set to CANCELLED, written to {data_file}")
+        
+        # Verify it was written
+        verification_data = get_data(data_file)
+        log.warning(f"🚫 {basename}: Verification read shows stage={verification_data.get('status', {}).get('stage', 'unknown')}")
+        
+        # Revoke all queued/running Celery tasks for this document
+        log.warning(f"🚫 {basename}: Revoking Celery tasks...")
+        revoked_count = 0
+        try:
+            from celery import current_app
+            inspect = current_app.control.inspect()
+            
+            # Get all active, reserved (queued), and scheduled tasks
+            active_tasks = inspect.active()
+            reserved_tasks = inspect.reserved()
+            scheduled_tasks = inspect.scheduled()
+            
+            log.warning(f"🚫 {basename}: Inspecting tasks - active={active_tasks is not None}, reserved={reserved_tasks is not None}, scheduled={scheduled_tasks is not None}")
+            
+            # Collect task IDs that match this document
+            tasks_to_revoke = []
+            
+            for task_dict in [active_tasks, reserved_tasks, scheduled_tasks]:
+                if task_dict:
+                    for worker, tasks in task_dict.items():
+                        for task in tasks:
+                            task_kwargs = task.get('kwargs', {})
+                            task_files_path = task_kwargs.get('files_path', '')
+                            
+                            # Check if this task belongs to the document being cancelled
+                            if task_files_path == files_path:
+                                tasks_to_revoke.append(task['id'])
+                                log.warning(f"🚫 {basename}: Found task to revoke: {task['name']} (ID: {task['id'][:8]}...)")
+            
+            # Revoke all matching tasks
+            if tasks_to_revoke:
+                for task_id in tasks_to_revoke:
+                    current_app.control.revoke(task_id, terminate=True, signal='SIGKILL')
+                    revoked_count += 1
+                log.warning(f"🚫 {basename}: Revoked {revoked_count} Celery task(s)")
+            else:
+                log.warning(f"🚫 {basename}: No matching tasks found to revoke")
+                
+        except Exception as revoke_error:
+            log.warning(f"🚫 {basename}: Error revoking tasks: {revoke_error}")
+        
+        # Note: We do NOT automatically reset the document back to "post-upload".
+        # The document will remain in "cancelled" state until:
+        # - User manually triggers OCR again (which will reset it)
+        # - For folder queues, the monitor task will handle it
+        # This prevents the batch coordinator from continuing to process after reset.
+        
+        return jsonify({
+            'success': True,
+            'message': 'OCR cancelled successfully',
+            'revoked_tasks': revoked_count
+        })
+        
+    except Exception as e:
+        log.error(f"Error cancelling OCR: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route("/remove-from-queue", methods=["POST"])
+def remove_from_queue():
+    """
+    Remove a document from the sequential processing queue.
+    Expects JSON body with 'files_path' parameter.
+    This only works for documents in "queued" status (not yet started).
+    """
+    try:
+        data = request.get_json()
+        files_path = data.get("files_path")
+        
+        if not files_path:
+            return jsonify({
+                'success': False,
+                'error': 'files_path is required'
+            }), 400
+        
+        # Convert relative path to absolute if needed
+        if not files_path.startswith(FILES_PATH):
+            files_path = os.path.join(FILES_PATH, files_path.strip("/"))
+        
+        data_file = os.path.join(files_path, "_data.json")
+        
+        if not os.path.exists(data_file):
+            return jsonify({
+                'success': False,
+                'error': 'Document not found'
+            }), 404
+        
+        # Check if document is in "queued" status
+        doc_data = get_data(data_file)
+        current_stage = doc_data.get("status", {}).get("stage", "")
+        
+        if current_stage != "queued":
+            return jsonify({
+                'success': False,
+                'error': f'Document is not in queue (current status: {current_stage})'
+            }), 400
+        
+        # Set to "removed_from_queue" so sequential processor will skip it
+        # The processor will reset it to post-upload immediately after skipping
+        doc_data["status"] = {
+            "stage": "removed_from_queue",
+            "message": "Removido da fila",
+        }
+        update_json_file(data_file, doc_data)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Document removed from queue'
+        })
+        
+    except Exception as e:
+        import logging as log
+        log.error(f"Error removing from queue: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
 
 @app.route("/admin/flower/", defaults={"fullpath": ""}, methods=["GET", "POST"])

@@ -1,9 +1,27 @@
 {
+  "lang": ["por"],
+  "outputs": ["pdf"],
+  "dpiVal": null,
+  "otherParams": null,
   "engine": "tesserocr",
-  "lang": ["eng"],
-  "outputs": ["pdf", "txt"],
   "engineMode": 3,
-  "segmentMode": 5,
-  "thresholdMethod": 0,
-  "compress": true
+  "segmentMode": 4,
+  "thresholdMethod": 3,
+  "compress": true,
+  "preprocessing": {
+    "enabled": true,
+    "grayscale": true,
+    "clahe": true,
+    "clahe_clip_limit": 2.5,
+    "clahe_tile_size": 8,
+    "median_blur": true,
+    "median_blur_kernel": 7,
+    "threshold_method": "otsu",
+    "adaptive_block_size": 21,
+    "adaptive_c": 5,
+    "morphological_opening": true,
+    "morphological_closing": true,
+    "morph_kernel_size": 5,
+    "deskew": false
+  }
 }

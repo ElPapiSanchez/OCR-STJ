@@ -178,9 +178,8 @@ def _export_pdf_compress_first(
             fg_format="JPEG",
             bg_quality=compression_bg_quality,
             fg_quality=compression_fg_quality,
-            mask_method="cv",
+            mask_method="sauvola",
             flatten_to_jpeg=compression_flatten,
-            progress_callback=compression_progress,
         )
         
         compression_time = time.time() - start_time
@@ -846,6 +845,18 @@ def export_pdf(
     if not config and "ocr" in data and "config" in data["ocr"]:
         config = data["ocr"]["config"]
     
+    # If config is stored as a JSON string, parse it
+    if isinstance(config, str):
+        try:
+            config = json.loads(config)
+        except (json.JSONDecodeError, TypeError):
+            log.warning(f"Failed to parse config as JSON, using empty config")
+            config = {}
+    
+    # Ensure config is a dictionary
+    if not isinstance(config, dict):
+        config = {}
+    
     compression_target_dpi = config.get("compressionTargetDpi", COMPRESSION_DEFAULTS["compressionTargetDpi"])
     compression_bg_quality = config.get("compressionBgQuality", COMPRESSION_DEFAULTS["compressionBgQuality"])
     compression_fg_quality = config.get("compressionFgQuality", COMPRESSION_DEFAULTS["compressionFgQuality"])
@@ -1171,7 +1182,7 @@ def export_pdf(
                 fg_format="JPEG",
                 bg_quality=compression_bg_quality,
                 fg_quality=compression_fg_quality,
-                mask_method="cv",
+                mask_method="sauvola",
                 flatten_to_jpeg=compression_flatten,
             )
             

@@ -1,7 +1,7 @@
+import gc
 import os
 import io
-from typing import Optional, Tuple
-import logging
+from typing import Optional, Tuple, Any, Dict
 
 import numpy as np
 from PIL import Image, ImageFilter, ImageSequence
@@ -9,9 +9,6 @@ import fitz  # PyMuPDF
 
 # OpenCV is now required because default mask method is CV
 import cv2
-
-# Configure logging
-logger = logging.getLogger(__name__)
 
 
 # -------------------------------
@@ -148,19 +145,62 @@ def detect_text_mask_cv(
     return mask
 
 
+def detect_text_mask_sauvola(
+    img_rgb: np.ndarray,
+    win: int = 51,
+    k: float = 0.2,
+    R: float = 128.0,
+) -> np.ndarray:
+    """Single-window Sauvola binarisation."""
+    gray = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2GRAY)
+
+    bg = cv2.GaussianBlur(gray, (0, 0), sigmaX=15, sigmaY=15)
+    norm = cv2.divide(gray, bg, scale=255)
+    norm = cv2.normalize(norm, None, 0, 255, cv2.NORM_MINMAX).astype(np.uint8)
+
+    h, w = norm.shape
+    norm_f = norm.astype(np.float64)
+
+    win = win | 1
+    local_mean = cv2.boxFilter(norm_f, ddepth=-1, ksize=(win, win),
+                               borderType=cv2.BORDER_REFLECT)
+    local_sq_mean = cv2.boxFilter(norm_f * norm_f, ddepth=-1, ksize=(win, win),
+                                  borderType=cv2.BORDER_REFLECT)
+    local_var = np.maximum(local_sq_mean - local_mean * local_mean, 0.0)
+    local_std = np.sqrt(local_var)
+
+    threshold = local_mean * (1.0 + k * (local_std / R - 1.0))
+    mask = np.where(norm_f < threshold, 255, 0).astype(np.uint8)
+
+    nb_components, output, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    sizes = stats[1:, cv2.CC_STAT_AREA]
+    min_size = max(2, (h * w) // 200000)
+    cleaned = np.zeros_like(mask, dtype=np.uint8)
+    for i, sz in enumerate(sizes):
+        if sz >= min_size:
+            cleaned[output == (i + 1)] = 255
+
+    return cleaned
+
+
 def segment_page_to_mrc_components_cv(
     pil_img: Image.Image,
     win_size: int = 35,
     C: int = 10,
     morph_kernel: int = 3,
+    mask_method: str = "sauvola",
     inpaint_bg: bool = False,
     inpaint_method: str = "telea",
     inpaint_radius: int = 3,
     inpaint_dilate_px: int = 1,
     inpaint_post_blur: float = 1.5,
+    input_dpi: float = 0.0,
+    sauvola_max_dpi: float = 300.0,
 ) -> Tuple[Image.Image, Image.Image, Image.Image]:
     """
-    CV-based segmentation using detect_text_mask_cv for the mask.
+    CV-based segmentation. mask_method selects the binarisation algorithm:
+      "sauvola" - Sauvola thresholding (default)
+      "cv"      - adaptive Gaussian threshold
     Produces:
       - bg_img: smooth colour background (RGB)
       - fg_img: colour foreground-only (RGB on white)
@@ -170,18 +210,31 @@ def segment_page_to_mrc_components_cv(
     the background via OpenCV inpainting before the blur, preventing ghosted
     text in the final composite.
     """
-    logger.debug("Starting CV-based segmentation")
     orig_rgb = pil_img.convert("RGB")
     img_np = np.asarray(orig_rgb, dtype=np.uint8)
 
-    mask_np = detect_text_mask_cv(img_np, win_size=win_size, C=C, morph_kernel=morph_kernel)
+    orig_h, orig_w = img_np.shape[:2]
+
+    if mask_method == "sauvola":
+        seg_img = img_np
+        if input_dpi > sauvola_max_dpi > 0:
+            s = sauvola_max_dpi / input_dpi
+            small_w = max(1, int(round(orig_w * s)))
+            small_h = max(1, int(round(orig_h * s)))
+            seg_img = cv2.resize(img_np, (small_w, small_h),
+                                 interpolation=cv2.INTER_AREA)
+        mask_np = detect_text_mask_sauvola(seg_img)
+        if mask_np.shape[:2] != (orig_h, orig_w):
+            mask_np = cv2.resize(mask_np, (orig_w, orig_h),
+                                 interpolation=cv2.INTER_NEAREST)
+    else:
+        mask_np = detect_text_mask_cv(img_np, win_size=win_size, C=C, morph_kernel=morph_kernel)
     mask_np = np.where(mask_np > 0, 255, 0).astype(np.uint8)
     mask_final = mask_np > 0
 
     mask_img = Image.fromarray(mask_np, mode="L")
 
     if inpaint_bg:
-        logger.debug(f"Inpainting background: method={inpaint_method}, radius={inpaint_radius}")
         bg_img = make_inpainted_background_cv(
             orig_rgb,
             mask_img,
@@ -196,7 +249,6 @@ def segment_page_to_mrc_components_cv(
     fg_arr = img_np.copy()
     fg_img = Image.fromarray(fg_arr, mode="RGB")
 
-    logger.debug("CV-based segmentation complete")
     return bg_img, fg_img, mask_img
 
 
@@ -305,6 +357,7 @@ def mrc_pdf_from_bytes(
     filetype: str,
     target_dpi: float,
     *,
+    assume_dpi: float = 300.0,
     render_dpi: Optional[float] = None,
     output_pdf_path: Optional[str] = None,
     output_components_dir: Optional[str] = None,
@@ -312,121 +365,86 @@ def mrc_pdf_from_bytes(
     fg_format: str = "JPEG",
     bg_quality: int = 40,
     fg_quality: int = 80,
-    mask_method: str = "cv",  # default to CV
+    mask_method: str = "sauvola",
     cv_win_size: int = 20,
     cv_C: int = 10,
     cv_morph_kernel: int = 3,
     flatten_to_jpeg: bool = False,
     flatten_quality: int = 85,
-    inpaint_bg: bool = True,
+    inpaint_bg: bool = False,
     inpaint_method: str = "telea",
     inpaint_radius: int = 3,
     inpaint_dilate_px: int = 1,
     inpaint_post_blur: float = 1.5,
-    progress_callback: Optional[callable] = None,
 ) -> bytes:
     """
-    Run the MRC-style pipeline on an in-memory PDF or TIFF and return the output PDF bytes.
+    Run the MRC-style pipeline on an in-memory file and return the output PDF bytes.
 
     Args:
-        file_bytes: Input file bytes (PDF or TIFF).
-        filetype: "pdf" or "tiff" (also accepts "tif").
-        target_dpi: Desired output DPI (used for downsampling and px->pt size mapping).
-        render_dpi: For PDFs: rasterization DPI. For TIFFs: overrides metadata DPI if provided.
-        output_pdf_path: Optional path to write the output PDF to disk.
-        output_components_dir: Optional dir to dump BG/FG/mask images per page for inspection.
-        bg_format/fg_format: "JPEG" or "JPEG2000" (if Pillow supports JP2).
-        bg_quality/fg_quality: quality for bg/fg formats.
-        mask_method: "cv" (default) or "pil".
-        cv_*: CV parameters (scaled with input_dpi vs base_dpi=300).
-        inpaint_bg: If True, remove text from the background via inpainting before blur.
-        inpaint_method: "telea" | "ns" | "masked_blur".
-        inpaint_radius: Radius for OpenCV inpaint algorithms.
-        inpaint_dilate_px: Pixels to dilate the mask before inpainting (catches halos).
-        inpaint_post_blur: Gaussian blur sigma applied after inpainting.
-        progress_callback: Optional callback function(page_num, total_pages) called after each page.
-
-    Returns:
-        PDF bytes.
+        assume_dpi: DPI to assume when the file has no metadata DPI.  Applied
+                    uniformly to all file types (PDF render DPI, TIFF, JPEG, PNG).
+        render_dpi: Explicit override — always used as input DPI when set.
     """
-    logger.info(f"Starting MRC compression: filetype={filetype}, target_dpi={target_dpi}, render_dpi={render_dpi}")
-    logger.info(f"Settings: bg_quality={bg_quality}, fg_quality={fg_quality}, mask_method={mask_method}, flatten={flatten_to_jpeg}")
-    
     ft = filetype.lower().strip(".")
     if ft not in ("pdf", "tif", "tiff", "jpg", "jpeg", "png"):
         raise ValueError("filetype must be 'pdf', 'tiff'/'tif', 'jpeg'/'jpg', or 'png'")
 
     is_pdf = ft == "pdf"
     is_tiff = ft in ("tif", "tiff")
-    is_image = ft in ("jpg", "jpeg", "png")
 
     if target_dpi <= 0:
         raise ValueError("target_dpi must be > 0")
 
-    # Determine effective input DPI
-    if is_pdf:
-        input_dpi = float(render_dpi) if render_dpi is not None else float(target_dpi)
-        input_dpi = float(int(round(input_dpi)))  # PyMuPDF expects integer-ish DPI
-        page_iter = _iter_pil_pages_from_pdf_bytes(file_bytes, render_dpi=int(round(input_dpi)))
-        # Count total pages for progress tracking
-        temp_doc = fitz.open(stream=file_bytes, filetype="pdf")
-        total_pages = len(temp_doc)
-        temp_doc.close()
+    # --- Resolve input DPI uniformly across all file types ---
+    if render_dpi is not None:
+        input_dpi = float(render_dpi)
+    elif is_pdf:
+        input_dpi = float(int(round(assume_dpi)))
     elif is_tiff:
-        # For TIFFs, try to read metadata DPI unless overridden
-        if render_dpi is not None:
-            input_dpi = float(render_dpi)
-        else:
-            bio = io.BytesIO(file_bytes)
-            timg = Image.open(bio)
-            dpi_tuple = timg.info.get("dpi", (target_dpi, target_dpi))
-            input_dpi = float(dpi_tuple[0]) if dpi_tuple else float(target_dpi)
-            if input_dpi <= 0:
-                input_dpi = float(target_dpi)
-        page_iter = _iter_pil_pages_from_tiff_bytes(file_bytes)
-        # Count TIFF pages
         bio = io.BytesIO(file_bytes)
         timg = Image.open(bio)
-        total_pages = 1
-        try:
-            while True:
-                timg.seek(timg.tell() + 1)
-                total_pages += 1
-        except EOFError:
-            pass
-        bio.close()
-    else:
-        # JPEG / PNG: read DPI from metadata, fall back to target_dpi
-        if render_dpi is not None:
-            input_dpi = float(render_dpi)
+        dpi_tuple = timg.info.get("dpi")
+        if dpi_tuple and float(dpi_tuple[0]) > 0:
+            input_dpi = float(dpi_tuple[0])
         else:
-            input_dpi = _read_image_dpi(file_bytes, fallback=float(target_dpi))
-        page_iter = _iter_pil_pages_from_image_bytes(file_bytes)
-        total_pages = 1  # Single image
+            input_dpi = float(assume_dpi)
+    else:
+        meta_dpi = _read_image_dpi(file_bytes, fallback=0.0)
+        input_dpi = meta_dpi if meta_dpi > 0 else float(assume_dpi)
 
-    logger.info(f"Input DPI: {input_dpi}, Target DPI: {target_dpi}")
-    logger.info(f"Total pages to compress: {total_pages}")
-    
+    print(f"📦 COMPRESSION START: filetype={ft}, file_size={len(file_bytes)/1024/1024:.1f}MB")
+    print(f"📦 DPI: input={input_dpi:.1f}, target={target_dpi:.1f}, scale={(target_dpi/input_dpi):.4f}")
+    print(f"📦 Settings: bg_quality={bg_quality}, fg_quality={fg_quality}, mask_method={mask_method}")
+
+    if is_pdf:
+        input_dpi = float(int(round(input_dpi)))
+        page_iter = _iter_pil_pages_from_pdf_bytes(file_bytes, render_dpi=int(round(input_dpi)))
+        print(f"📦 Loading PDF with render_dpi={int(round(input_dpi))}")
+    elif is_tiff:
+        page_iter = _iter_pil_pages_from_tiff_bytes(file_bytes)
+        print(f"📦 Loading TIFF iterator")
+    else:
+        page_iter = _iter_pil_pages_from_image_bytes(file_bytes)
+        print(f"📦 Loading single image")
+
     # Downsample scale (true downsampling)
     scale = (target_dpi / input_dpi) if input_dpi > target_dpi else 1.0
-    logger.info(f"Downsampling scale: {scale:.4f}")
 
     if output_components_dir:
         os.makedirs(output_components_dir, exist_ok=True)
-        logger.info(f"Saving components to: {output_components_dir}")
 
     # Output PDF (in-memory)
     out_doc = fitz.open()
 
     for page_index, pil_page in enumerate(page_iter, start=1):
-        logger.info(f"Processing page {page_index}")
         w_px_orig, h_px_orig = pil_page.size
         width_pt = w_px_orig * 72.0 / input_dpi
         height_pt = h_px_orig * 72.0 / input_dpi
-        logger.debug(f"Page {page_index} size: {w_px_orig}x{h_px_orig}px -> {width_pt:.1f}x{height_pt:.1f}pt")
+
+        print(f"📦 Page {page_index}: Loaded {w_px_orig}×{h_px_orig}px → {width_pt:.1f}×{height_pt:.1f}pt")
 
         # Segment at full resolution
-        if mask_method == "cv":
+        if mask_method in ("cv", "sauvola"):
             win_s, C_s, mk_s = _scale_cv_params_for_dpi(
                 input_dpi=input_dpi,
                 base_dpi=300.0,
@@ -434,15 +452,20 @@ def mrc_pdf_from_bytes(
                 C=cv_C,
                 morph_kernel=cv_morph_kernel,
             )
+            print(f"📦 Page {page_index}: Starting {mask_method.upper()} segmentation (win_size={win_s}, C={C_s})...")
             bg_full, fg_full, mask_full = segment_page_to_mrc_components_cv(
                 pil_page, win_size=win_s, C=C_s, morph_kernel=mk_s,
+                mask_method=mask_method,
                 inpaint_bg=inpaint_bg,
                 inpaint_method=inpaint_method,
                 inpaint_radius=inpaint_radius,
                 inpaint_dilate_px=inpaint_dilate_px,
                 inpaint_post_blur=inpaint_post_blur,
+                input_dpi=input_dpi,
             )
+            print(f"📦 Page {page_index}: Segmentation complete")
         elif mask_method == "pil":
+            print(f"📦 Page {page_index}: Starting PIL segmentation...")
             bg_full, fg_full, mask_full = segment_page_to_mrc_components_pil(pil_page)
             if inpaint_bg:
                 bg_full = make_inpainted_background_cv(
@@ -452,70 +475,37 @@ def mrc_pdf_from_bytes(
                     dilate_px=inpaint_dilate_px,
                     post_blur_radius=inpaint_post_blur,
                 )
+            print(f"📦 Page {page_index}: Segmentation complete")
         else:
-            raise ValueError("mask_method must be 'cv' or 'pil'")
+            raise ValueError("mask_method must be 'sauvola', 'cv', or 'pil'")
 
-        # True downsampling after segmentation
+        del pil_page
+
         if scale < 1.0:
-            logger.debug(f"Downsampling page {page_index} by scale {scale:.4f}")
             new_size = (
                 max(1, int(round(w_px_orig * scale))),
                 max(1, int(round(h_px_orig * scale))),
             )
+            print(f"📦 Page {page_index}: Downsampling {w_px_orig}×{h_px_orig} → {new_size[0]}×{new_size[1]}")
             bg_img = bg_full.resize(new_size, Image.LANCZOS)
             fg_img = fg_full.resize(new_size, Image.LANCZOS)
 
-            # Downsample mask with block averaging + thresholding
-            mask_np = (np.asarray(mask_full, dtype=np.uint8) // 255)
-
-            sy = h_px_orig / new_size[1]
-            sx = w_px_orig / new_size[0]
-            out = np.zeros((new_size[1], new_size[0]), dtype=np.uint8)
-
-            for y in range(new_size[1]):
-                y0 = int(y * sy)
-                y1 = int((y + 1) * sy)
-                for x in range(new_size[0]):
-                    x0 = int(x * sx)
-                    x1 = int((x + 1) * sx)
-                    block = mask_np[y0:y1, x0:x1]
-                    out[y, x] = 255 if block.mean() > 0.5 else 0
-
-            mask_img = Image.fromarray(out, mode="L")
+            mask_area = cv2.resize(np.asarray(mask_full, dtype=np.uint8), new_size, interpolation=cv2.INTER_AREA)
+            mask_img = Image.fromarray((mask_area > 127).astype(np.uint8) * 255, mode="L")
+            del mask_area
+            del bg_full, fg_full, mask_full
         else:
             bg_img, fg_img, mask_img = bg_full, fg_full, mask_full
 
-        # Encode components
-        bg_bytes = encode_pil_to_bytes(bg_img, bg_format, quality=bg_quality)
-        fg_bytes = encode_pil_to_bytes(fg_img, fg_format, quality=fg_quality)
-        mask_bytes = encode_pil_to_bytes(mask_img, "PNG", optimize=True)
-        
-        logger.info(f"Page {page_index} sizes: BG={len(bg_bytes)/1024:.1f}KB, FG={len(fg_bytes)/1024:.1f}KB, Mask={len(mask_bytes)/1024:.1f}KB")
-
-        # Optional dump to disk
-        if output_components_dir:
-            tag = f"p{page_index:04d}"
-            with open(os.path.join(output_components_dir, f"{tag}_bg.{bg_format.lower()}"), "wb") as f:
-                f.write(bg_bytes)
-            with open(os.path.join(output_components_dir, f"{tag}_fg.{fg_format.lower()}"), "wb") as f:
-                f.write(fg_bytes)
-            with open(os.path.join(output_components_dir, f"{tag}_mask.png"), "wb") as f:
-                f.write(mask_bytes)
-
-        # Encode + insert
         page = out_doc.new_page(width=width_pt, height=height_pt)
         rect = fitz.Rect(0, 0, width_pt, height_pt)
 
+        print(f"📦 Page {page_index}: Encoding components...")
         if flatten_to_jpeg:
-            logger.debug(f"Flattening page {page_index} to single JPEG")
-            # 1) Pre-compress BG/FG first (lossy), then decode back
             bg_j = jpeg_roundtrip_pil(bg_img, quality=bg_quality)
             fg_j = jpeg_roundtrip_pil(fg_img, quality=fg_quality)
-
-            # 2) Composite AFTER lossy BG/FG compression
             flat_img = Image.composite(fg_img, bg_j, mask_img)
-
-            # 3) Final JPEG encode of the flattened page
+            del bg_j, fg_j, bg_img, fg_img, mask_img
             flat_bytes = encode_pil_to_bytes(
                 flat_img,
                 "JPEG",
@@ -524,21 +514,21 @@ def mrc_pdf_from_bytes(
                 optimize=True,
                 progressive=True,
             )
-
+            del flat_img
             if output_components_dir:
                 tag = f"p{page_index:04d}"
                 with open(os.path.join(output_components_dir, f"{tag}_flat.jpg"), "wb") as f:
                     f.write(flat_bytes)
-
             page.insert_image(rect, stream=flat_bytes, overlay=False)
-
-
+            del flat_bytes
+            print(f"📦 Page {page_index}: Flattened JPEG inserted")
         else:
             bg_bytes = encode_pil_to_bytes(bg_img, bg_format, quality=bg_quality)
+            del bg_img
             fg_bytes = encode_pil_to_bytes(fg_img, fg_format, quality=fg_quality)
+            del fg_img
             mask_bytes = encode_pil_to_bytes(mask_img, "PNG", optimize=True)
-
-            # Optional dump
+            del mask_img
             if output_components_dir:
                 tag = f"p{page_index:04d}"
                 with open(os.path.join(output_components_dir, f"{tag}_bg.{bg_format.lower()}"), "wb") as f:
@@ -547,26 +537,25 @@ def mrc_pdf_from_bytes(
                     f.write(fg_bytes)
                 with open(os.path.join(output_components_dir, f"{tag}_mask.png"), "wb") as f:
                     f.write(mask_bytes)
-
             page.insert_image(rect, stream=bg_bytes, overlay=False)
             page.insert_image(rect, stream=fg_bytes, mask=mask_bytes, overlay=True)
-        
-        # Call progress callback after each page
-        if progress_callback:
-            progress_callback(page_index, total_pages)
+            print(f"📦 Page {page_index}: BG/FG/Mask layers inserted")
+            del bg_bytes, fg_bytes, mask_bytes
 
-    logger.info("Finalizing PDF output")
+        print(f"📦 Page {page_index}: Complete!")
+        gc.collect()
+
+    print(f"📦 Finalizing PDF...")
     out_doc.set_xml_metadata(_build_pdfa2b_xmp())
     out_bytes = out_doc.tobytes(garbage=4, deflate=True)
     out_doc.close()
-    
-    logger.info(f"Compression complete. Output size: {len(out_bytes)/1024:.1f}KB")
+
+    print(f"📦 COMPRESSION COMPLETE: Output size={len(out_bytes)/1024/1024:.1f}MB")
 
     if output_pdf_path:
         os.makedirs(os.path.dirname(output_pdf_path) or ".", exist_ok=True)
         with open(output_pdf_path, "wb") as f:
             f.write(out_bytes)
-        logger.info(f"Saved compressed PDF to: {output_pdf_path}")
 
     return out_bytes
 
@@ -575,15 +564,13 @@ def mrc_pdf_from_path(
     input_path: str,
     target_dpi: float,
     *,
+    assume_dpi: float = 300.0,
     render_dpi: Optional[float] = None,
     output_pdf_path: Optional[str] = None,
     output_components_dir: Optional[str] = None,
     **kwargs,
 ) -> bytes:
-    """
-    Convenience wrapper if you still want to start from a file path.
-    """
-    logger.info(f"Processing file: {input_path}")
+    """Convenience wrapper that starts from a file path."""
     ext = os.path.splitext(input_path)[1].lower()
     if ext == ".pdf":
         filetype = "pdf"
@@ -598,13 +585,12 @@ def mrc_pdf_from_path(
 
     with open(input_path, "rb") as f:
         data = f.read()
-    
-    logger.info(f"Input file size: {len(data)/1024:.1f}KB")
 
     return mrc_pdf_from_bytes(
         data,
         filetype=filetype,
         target_dpi=target_dpi,
+        assume_dpi=assume_dpi,
         render_dpi=render_dpi,
         output_pdf_path=output_pdf_path,
         output_components_dir=output_components_dir,

@@ -128,6 +128,7 @@ class FileExplorer extends React.Component {
         this.getImages = this.getImages.bind(this);
         this.editText = this.editText.bind(this);
         this.performOCR = this.performOCR.bind(this);
+        this.cancelOCR = this.cancelOCR.bind(this);
         this.configureOCR = this.configureOCR.bind(this);
         this.indexFile = this.indexFile.bind(this);
         this.removeIndexFile = this.removeIndexFile.bind(this);
@@ -483,6 +484,34 @@ class FileExplorer extends React.Component {
         let path = this.props.current_folder;
         if (this.props._private) { path = this.props.spaceId + '/' + path }
         this.ocrPopup.current.openMenu(path, filename, ocrTargetIsFolder, alreadyOcr, customConfig);
+    }
+
+    cancelOCR(filename) {
+        console.log('🚫 cancelOCR called with filename:', filename);
+        
+        let path = this.props.current_folder;
+        if (this.props._private) { path = this.props.spaceId + '/' + path }
+        
+        const files_path = path ? `${path}/${filename}` : filename;
+        
+        console.log('🚫 Sending cancel request with files_path:', files_path);
+        console.log('🚫 API URL:', API_URL);
+        
+        axios.post(`${API_URL}/cancel-ocr`, { files_path })
+            .then(response => {
+                console.log('🚫 Cancel response:', response.data);
+                if (response.data.success) {
+                    this.successNot.current.openNotif(this.props.t('ocr cancelled'));
+                    this.fetchFiles();
+                } else {
+                    this.errorNot.current.openNotif(this.props.t('error') + ': ' + response.data.error);
+                }
+            })
+            .catch(err => {
+                console.error('🚫 Error cancelling OCR:', err);
+                console.error('🚫 Error details:', err.response);
+                this.errorNot.current.openNotif(this.props.t('error canceling ocr'));
+            });
     }
 
     sendChunk(i, chunk, fileName, _totalCount, _fileID, uniquePreventExit) {
@@ -1043,6 +1072,7 @@ class FileExplorer extends React.Component {
                 _private: this.props._private,
                 deleteItem: this.deleteItem,
                 performOCR: this.performOCR,
+                cancelOCR: this.cancelOCR,
                 configureOCR: this.configureOCR,
             };
 

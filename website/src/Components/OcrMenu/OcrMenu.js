@@ -32,8 +32,12 @@ import {
     emptyConfig,
     engineList,
     tesseractLangList,
+    tesseractLanguagesList,
+    tesseractModulesList,
     tesseractModeList,
     tesseractOutputsList,
+    tesseractMainOutputsList,
+    tesseractAdvancedOutputsList,
     tesseractSegmentList,
     tesseractThreshList,
 } from "defaultOcrConfigs";
@@ -80,6 +84,7 @@ class OcrMenu extends React.Component {
             loaded: false,  // true if default configuration has been fetched and page is ready
             fetchingPreset: false,  // true if selected preset has been fetched
             advancedDialogOpen: false,  // for advanced settings dialog
+            moreOutputsDialogOpen: false,  // for more outputs dialog
         }
 
         // Disable options restricted to single-page if configuring for multi-page documents
@@ -250,6 +255,7 @@ class OcrMenu extends React.Component {
             compressionBgQuality: Number(this.state.compressionBgQuality),
             compressionFgQuality: Number(this.state.compressionFgQuality),
             compressionFlattenToJpeg: true,  // Always flatten to JPEG
+            preprocessing: this.state.preprocessing,
         }
         if (this.state.dpiVal !== null && this.state.dpiVal !== "") {
             config.dpi = this.state.dpiVal;
@@ -362,6 +368,8 @@ class OcrMenu extends React.Component {
                         this.leave();
                     } else {
                         this.props.setCurrentCustomConfig(config);
+                        // Reload the configuration from server to ensure it's properly saved
+                        this.fetchDocumentConfig();
                     }
                 } else {
                     this.errorNot.current.openNotif(this.props.t("error config save unexpected"))
@@ -493,17 +501,43 @@ class OcrMenu extends React.Component {
                 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
                         <Typography component="legend" sx={{ fontWeight: 500 }}>
-                            {this.props.t("language")}
+                            {this.props.t("languages_section")}
                         </Typography>
                         <InfoTooltip title={this.props.t("ocr_help.language")} />
                     </Box>
+                    {/* #region agent log */}
+                    {(() => {
+                        const rawList = tesseractLanguagesList();
+                        const mappedList = rawList.map(opt => ({ value: opt.value, description: this.props.t(opt.translationKey) }));
+                        fetch('http://127.0.0.1:7326/ingest/46879f29-c4a4-4a72-82b8-c1d87f64db28',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'00413b'},body:JSON.stringify({sessionId:'00413b',location:'OcrMenu.js:507',message:'Language list transformation',data:{rawSample:rawList[0],mappedSample:mappedList[0],tFunction:typeof this.props.t,tResult:this.props.t('languages.arabic')},timestamp:Date.now(),hypothesisId:'BCD'})}).catch(()=>{});
+                        return null;
+                    })()}
+                    {/* #endregion */}
                     <CheckboxList title=""
-                                  options={tesseractLangList()}
+                                  options={tesseractLanguagesList().map(opt => ({ 
+                                      value: opt.value, 
+                                      description: this.props.t(opt.translationKey) 
+                                  }))}
                                   checked={this.state.lang}
                                   onChangeCallback={this.setLangList}
                                   showOrder
                                   helperText={this.props.t("helper text language order")}
                                   errorText={this.props.t("error must select language")}/>
+                    
+                    <Box sx={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem', marginTop: '1.5rem' }}>
+                        <Typography component="legend" sx={{ fontWeight: 500 }}>
+                            {this.props.t("special modules")}
+                        </Typography>
+                        <InfoTooltip title={this.props.t("ocr_help.special_modules")} />
+                    </Box>
+                    <CheckboxList title=""
+                                  options={tesseractModulesList().map(opt => ({ 
+                                      value: opt.value, 
+                                      description: this.props.t(opt.translationKey) 
+                                  }))}
+                                  checked={this.state.lang}
+                                  onChangeCallback={this.setLangList}
+                                  showOrder={false}/>
                 </Box>
 
                 <Box sx={{
@@ -538,22 +572,48 @@ class OcrMenu extends React.Component {
                         <InfoTooltip title={this.props.t("ocr_help.dpi")} />
                     </Box>
 
-                    <FormControl className="simpleDropdown borderTop">
-                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                            <FormLabel id="label-thresholding-select">{this.props.t("thresholding")}</FormLabel>
-                            <InfoTooltip title={this.props.t("ocr_help.thresholding")} />
+                    {/* Preprocessing Settings */}
+                    <Box sx={{ mt: 2, p: 2, border: '1px solid #e0e0e0', borderRadius: 1 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', marginBottom: '1rem' }}>
+                            <Typography variant="subtitle1" sx={{ fontWeight: 500 }}>
+                                {this.props.t("preprocessing.title")}
+                            </Typography>
+                            <InfoTooltip title={this.props.t("ocr_help.preprocessing")} />
                         </Box>
-                        <RadioGroup
-                            aria-labelledby="label-thresholding-select"
-                            value={this.state.thresholdMethod}
-                            onChange={(e) => this.changeThresholdingMethod(e.target.value)}>
-                            {
-                                this.state.thresholdMethodOptions.map((option) =>
-                                    <FormControlLabel value={option.value} control={<Radio disableRipple />} label={option.description}/>
-                                )
+                        
+                        <FormControlLabel
+                            control={
+                                <Switch
+                                    checked={this.state.preprocessing?.enabled ?? true}
+                                    onChange={(e) => this.setState({
+                                        preprocessing: { ...this.state.preprocessing, enabled: e.target.checked },
+                                        usingDefault: false,
+                                        uncommittedChanges: true
+                                    })}
+                                />
                             }
-                        </RadioGroup>
-                    </FormControl>
+                            label={this.props.t("preprocessing.enabled")}
+                        />
+
+                        <FormControl fullWidth size="small" sx={{ mt: 2 }}>
+                            <InputLabel>{this.props.t("preprocessing.threshold_method")}</InputLabel>
+                            <Select
+                                value={this.state.preprocessing?.threshold_method ?? "adaptive_gaussian"}
+                                onChange={(e) => this.setState({
+                                    preprocessing: { ...this.state.preprocessing, threshold_method: e.target.value },
+                                    usingDefault: false,
+                                    uncommittedChanges: true
+                                })}
+                                label={this.props.t("preprocessing.threshold_method")}
+                                disabled={!this.state.preprocessing?.enabled}
+                            >
+                                <MenuItem value="adaptive_gaussian">Adaptive Gaussian</MenuItem>
+                                <MenuItem value="otsu">OTSU</MenuItem>
+                                <MenuItem value="sauvola">Sauvola</MenuItem>
+                                <MenuItem value="none">None</MenuItem>
+                            </Select>
+                        </FormControl>
+                    </Box>
 
                     <Button
                         variant="outlined"
@@ -583,11 +643,22 @@ class OcrMenu extends React.Component {
                         <InfoTooltip title={this.props.t("ocr_help.output_formats")} />
                     </Box>
                     <CheckboxList title=""
-                                  options={this.state.outputOptions}
+                                  options={tesseractMainOutputsList().map(opt => ({ 
+                                      value: opt.value, 
+                                      description: this.props.t(opt.translationKey) 
+                                  }))}
                                   checked={this.state.outputs}
                                   onChangeCallback={this.setOutputList}
                                   errorText={this.props.t("error must select output")}/>
                     
+                    <Button
+                        variant="outlined"
+                        onClick={() => this.setState({ moreOutputsDialogOpen: true })}
+                        sx={{ mt: 1, mb: 2 }}
+                        size="small"
+                    >
+                        {this.props.t("more outputs")}
+                    </Button>
                     {/* Compression Settings */}
                     <FormControl className="simpleDropdown borderTop" sx={{ paddingTop: '1rem', mt: 2 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -730,10 +801,284 @@ class OcrMenu extends React.Component {
                             />
                             <InfoTooltip title={this.props.t("ocr_help.additional_params")} />
                         </Box>
+
+                        {/* Tesseract Thresholding Method */}
+                        <FormControl className="simpleDropdown" sx={{ mt: 2 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                <FormLabel id="label-thresholding-select">{this.props.t("tesseract thresholding")}</FormLabel>
+                                <InfoTooltip title={this.props.t("ocr_help.tesseract_thresholding")} />
+                            </Box>
+                            <RadioGroup
+                                aria-labelledby="label-thresholding-select"
+                                value={this.state.thresholdMethod}
+                                onChange={(e) => this.changeThresholdingMethod(e.target.value)}>
+                                {
+                                    this.state.thresholdMethodOptions.map((option) =>
+                                        <FormControlLabel key={option.value} value={option.value} control={<Radio disableRipple />} label={option.description}/>
+                                    )
+                                }
+                            </RadioGroup>
+                        </FormControl>
+
+                        {/* Preprocessing Pipeline Section */}
+                        <Box sx={{ mt: 2, p: 2, border: '1px solid #e0e0e0', borderRadius: 1 }}>
+                            <Typography variant="h6" sx={{ mb: 2 }}>{this.props.t("preprocessing.title")}</Typography>
+                            
+                            <FormControlLabel
+                                control={
+                                    <Switch
+                                        checked={this.state.preprocessing?.enabled ?? true}
+                                        onChange={(e) => this.setState({
+                                        preprocessing: { ...this.state.preprocessing, enabled: e.target.checked },
+                                        usingDefault: false,
+                                        uncommittedChanges: true
+                                    })}
+                                />
+                            }
+                            label={this.props.t("preprocessing.enabled")}
+                            />
+
+                            <Box sx={{ ml: 4, mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                <FormControlLabel
+                                    control={
+                                        <Switch
+                                            checked={this.state.preprocessing?.grayscale ?? true}
+                                            onChange={(e) => this.setState({
+                                            preprocessing: { ...this.state.preprocessing, grayscale: e.target.checked },
+                                            usingDefault: false,
+                                            uncommittedChanges: true
+                                        })}
+                                        disabled={!this.state.preprocessing?.enabled}
+                                        />
+                                    }
+                                    label={this.props.t("preprocessing.grayscale")}
+                                />
+
+                                <Box>
+                                    <FormControlLabel
+                                        control={
+                                            <Switch
+                                                checked={this.state.preprocessing?.clahe ?? true}
+                                                onChange={(e) => this.setState({
+                                            preprocessing: { ...this.state.preprocessing, clahe: e.target.checked },
+                                            usingDefault: false,
+                                            uncommittedChanges: true
+                                        })}
+                                        disabled={!this.state.preprocessing?.enabled}
+                                            />
+                                        }
+                                        label={this.props.t("preprocessing.clahe")}
+                                    />
+                                    {this.state.preprocessing?.clahe && (
+                                        <Box sx={{ ml: 4, display: 'flex', gap: 2 }}>
+                                            <TextField
+                                                label={this.props.t("preprocessing.clahe_clip_limit")}
+                                                type="number"
+                                                value={this.state.preprocessing?.clahe_clip_limit ?? 2.0}
+                                                onChange={(e) => this.setState({
+                                            preprocessing: { ...this.state.preprocessing, clahe_clip_limit: parseFloat(e.target.value) },
+                                            usingDefault: false,
+                                            uncommittedChanges: true
+                                        })}
+                                        size="small"
+                                                inputProps={{ min: 1, max: 10, step: 0.1 }}
+                                                disabled={!this.state.preprocessing?.enabled}
+                                            />
+                                            <TextField
+                                                label={this.props.t("preprocessing.clahe_tile_size")}
+                                                type="number"
+                                                value={this.state.preprocessing?.clahe_tile_size ?? 8}
+                                                onChange={(e) => this.setState({
+                                            preprocessing: { ...this.state.preprocessing, clahe_tile_size: parseInt(e.target.value) },
+                                            usingDefault: false,
+                                            uncommittedChanges: true
+                                        })}
+                                        size="small"
+                                                inputProps={{ min: 4, max: 32, step: 1 }}
+                                                disabled={!this.state.preprocessing?.enabled}
+                                            />
+                                        </Box>
+                                    )}
+                                </Box>
+
+                                <Box>
+                                    <FormControlLabel
+                                        control={
+                                            <Switch
+                                                checked={this.state.preprocessing?.median_blur ?? true}
+                                                onChange={(e) => this.setState({
+                                            preprocessing: { ...this.state.preprocessing, median_blur: e.target.checked },
+                                            usingDefault: false,
+                                            uncommittedChanges: true
+                                        })}
+                                        disabled={!this.state.preprocessing?.enabled}
+                                            />
+                                        }
+                                        label={this.props.t("preprocessing.median_blur")}
+                                    />
+                                    {this.state.preprocessing?.median_blur && (
+                                        <TextField
+                                            sx={{ ml: 4 }}
+                                            label={this.props.t("preprocessing.median_blur_kernel")}
+                                            type="number"
+                                            value={this.state.preprocessing?.median_blur_kernel ?? 3}
+                                            onChange={(e) => this.setState({
+                                                preprocessing: { ...this.state.preprocessing, median_blur_kernel: parseInt(e.target.value) },
+                                                    usingDefault: false,
+                                                uncommittedChanges: true
+                                            })}
+                                            size="small"
+                                            inputProps={{ min: 3, max: 9, step: 2 }}
+                                            disabled={!this.state.preprocessing?.enabled}
+                                        />
+                                    )}
+                                </Box>
+
+                                <Box>
+                                    <FormControl fullWidth size="small">
+                                        <InputLabel>{this.props.t("preprocessing.threshold_method")}</InputLabel>
+                                        <Select
+                                            value={this.state.preprocessing?.threshold_method ?? "adaptive_gaussian"}
+                                            onChange={(e) => this.setState({
+                                                preprocessing: { ...this.state.preprocessing, threshold_method: e.target.value },
+                                                    usingDefault: false,
+                                                uncommittedChanges: true
+                                            })}
+                                            label={this.props.t("preprocessing.threshold_method")}
+                                            disabled={!this.state.preprocessing?.enabled}
+                                        >
+                                            <MenuItem value="adaptive_gaussian">Adaptive Gaussian</MenuItem>
+                                            <MenuItem value="otsu">OTSU</MenuItem>
+                                            <MenuItem value="sauvola">Sauvola</MenuItem>
+                                            <MenuItem value="none">None</MenuItem>
+                                        </Select>
+                                    </FormControl>
+                                    {this.state.preprocessing?.threshold_method === "adaptive_gaussian" && (
+                                        <Box sx={{ mt: 1, display: 'flex', gap: 2 }}>
+                                            <TextField
+                                                label={this.props.t("preprocessing.adaptive_block_size")}
+                                                type="number"
+                                                value={this.state.preprocessing?.adaptive_block_size ?? 11}
+                                                onChange={(e) => this.setState({
+                                                    preprocessing: { ...this.state.preprocessing, adaptive_block_size: parseInt(e.target.value) },
+                                                    usingDefault: false,
+                                                    uncommittedChanges: true
+                                                })}
+                                                size="small"
+                                                inputProps={{ min: 3, max: 99, step: 2 }}
+                                                disabled={!this.state.preprocessing?.enabled}
+                                            />
+                                            <TextField
+                                                label={this.props.t("preprocessing.adaptive_c")}
+                                                type="number"
+                                                value={this.state.preprocessing?.adaptive_c ?? 2}
+                                                onChange={(e) => this.setState({
+                                                    preprocessing: { ...this.state.preprocessing, adaptive_c: parseInt(e.target.value) },
+                                                    usingDefault: false,
+                                                    uncommittedChanges: true
+                                                })}
+                                                size="small"
+                                                inputProps={{ min: 0, max: 20, step: 1 }}
+                                                disabled={!this.state.preprocessing?.enabled}
+                                            />
+                                        </Box>
+                                    )}
+                                </Box>
+
+                                <FormControlLabel
+                                    control={
+                                        <Switch
+                                            checked={this.state.preprocessing?.morphological_opening ?? true}
+                                            onChange={(e) => this.setState({
+                                                preprocessing: { ...this.state.preprocessing, morphological_opening: e.target.checked },
+                                                    usingDefault: false,
+                                                uncommittedChanges: true
+                                            })}
+                                            disabled={!this.state.preprocessing?.enabled}
+                                        />
+                                    }
+                                    label={this.props.t("preprocessing.morphological_opening")}
+                                />
+
+                                <Box>
+                                    <FormControlLabel
+                                        control={
+                                            <Switch
+                                                checked={this.state.preprocessing?.morphological_closing ?? true}
+                                                onChange={(e) => this.setState({
+                                                    preprocessing: { ...this.state.preprocessing, morphological_closing: e.target.checked },
+                                                    usingDefault: false,
+                                                    uncommittedChanges: true
+                                                })}
+                                                disabled={!this.state.preprocessing?.enabled}
+                                            />
+                                        }
+                                        label={this.props.t("preprocessing.morphological_closing")}
+                                    />
+                                    {(this.state.preprocessing?.morphological_opening || this.state.preprocessing?.morphological_closing) && (
+                                        <TextField
+                                            sx={{ ml: 4 }}
+                                            label={this.props.t("preprocessing.morph_kernel_size")}
+                                            type="number"
+                                            value={this.state.preprocessing?.morph_kernel_size ?? 3}
+                                            onChange={(e) => this.setState({
+                                                preprocessing: { ...this.state.preprocessing, morph_kernel_size: parseInt(e.target.value) },
+                                                    usingDefault: false,
+                                                uncommittedChanges: true
+                                            })}
+                                            size="small"
+                                            inputProps={{ min: 3, max: 9, step: 2 }}
+                                            disabled={!this.state.preprocessing?.enabled}
+                                        />
+                                    )}
+                                </Box>
+
+                                <FormControlLabel
+                                    control={
+                                        <Switch
+                                            checked={this.state.preprocessing?.deskew ?? true}
+                                            onChange={(e) => this.setState({
+                                                preprocessing: { ...this.state.preprocessing, deskew: e.target.checked },
+                                                    usingDefault: false,
+                                                uncommittedChanges: true
+                                            })}
+                                            disabled={!this.state.preprocessing?.enabled}
+                                        />
+                                    }
+                                    label={this.props.t("preprocessing.deskew")}
+                                />
+                            </Box>
+                        </Box>
                     </Box>
                 </DialogContent>
                 <DialogActions>
                     <Button onClick={() => this.setState({ advancedDialogOpen: false })} color="primary">
+                        {this.props.t("close")}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* More Outputs Dialog */}
+            <Dialog
+                open={this.state.moreOutputsDialogOpen}
+                onClose={() => this.setState({ moreOutputsDialogOpen: false })}
+                maxWidth="sm"
+                fullWidth
+            >
+                <DialogTitle>{this.props.t("more outputs")}</DialogTitle>
+                <DialogContent>
+                    <Box sx={{ pt: 1 }}>
+                        <CheckboxList title=""
+                                      options={tesseractAdvancedOutputsList().map(opt => ({ 
+                                          value: opt.value, 
+                                          description: this.props.t(opt.translationKey) 
+                                      }))}
+                                      checked={this.state.outputs}
+                                      onChangeCallback={this.setOutputList}/>
+                    </Box>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={() => this.setState({ moreOutputsDialogOpen: false })} color="primary">
                         {this.props.t("close")}
                     </Button>
                 </DialogActions>

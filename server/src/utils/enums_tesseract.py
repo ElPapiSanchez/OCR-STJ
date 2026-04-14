@@ -2,13 +2,20 @@ from enum import Enum
 
 
 class LANGS(Enum):
+    ARA = "ara"
+    CHI_SIM = "chi_sim"
+    CHI_TRA = "chi_tra"
     DEU = "deu"
-    SPA = "spa"
-    FRA = "fra"
     ENG = "eng"
-    POR = "por"
     EQU = "equ"
+    FRA = "fra"
+    HIN = "hin"
+    IND = "ind"
+    ITA = "ita"
     OSD = "osd"
+    POR = "por"
+    RUS = "rus"
+    SPA = "spa"
 
 
 class ENGINE_MODES(Enum):
@@ -40,6 +47,8 @@ class THRESHOLD_METHODS(Enum):
     OTSU = 0  # DEFAULT
     LEPTONICA = 1
     SAUVOLA = 2
+    ADAPTIVE_GAUSSIAN = 3
+    NONE = -1  # Preprocessing only (bypass Tesseract thresholding)
 
 
 class OUTPUTS(Enum):

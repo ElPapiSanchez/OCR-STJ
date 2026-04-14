@@ -1,5 +1,6 @@
 import React from 'react';
 import axios from 'axios';
+import { withTranslation } from 'react-i18next';
 
 import Box from '@mui/material/Box';
 import IconButton from '@mui/material/IconButton';
@@ -335,7 +336,7 @@ class EditingMenu extends React.Component {
             });
         })
         .catch(err => {
-            this.errorNotifRef.current.openWithMessage("Não foi possível obter resultados");
+            this.errorNotifRef.current.openWithMessage(this.props.t("editing.error_load"));
         });
     }
 
@@ -887,7 +888,7 @@ class EditingMenu extends React.Component {
                 this.setState({uncommittedChanges: false, mustRecreate: !remakeFiles});
                 window.removeEventListener('beforeunload', this.preventExit);
 
-                this.successNot.current.openNotif("Texto submetido com sucesso");
+                this.successNot.current.openNotif(this.props.t("editing.success_submit"));
 
                 if (remakeFiles) {
                     this.leave();
@@ -897,7 +898,7 @@ class EditingMenu extends React.Component {
             }
         })
         .catch(err => {
-            this.errorNotifRef.current.openWithMessage("Não foi possível submeter os resultados");
+            this.errorNotifRef.current.openWithMessage(this.props.t("editing.error_submit"));
         });
     }
 
@@ -973,7 +974,7 @@ class EditingMenu extends React.Component {
                                 component="h2"
                                 className="toolbarTitle"
                             >
-                                Editar os resultados do documento
+                                {this.props.t("editing.title")}
                             </Typography>
                         </Box>
 
@@ -998,7 +999,7 @@ class EditingMenu extends React.Component {
                                     onClick={() => {this.setState({editLinesMode: true})}}
                                     startIcon={<img style={{width: '1.2rem'}} alt="newLine" src={AddLineIcon} />}
                                 >
-                                    Adicionar/Remover Linhas
+                                    {this.props.t("editing.add_remove_lines")}
                                 </Button>
                             }
 
@@ -1049,7 +1050,7 @@ class EditingMenu extends React.Component {
                                         onClick={() => {this.setState({showConfidence: false})}}
                                         startIcon={<CloseRoundedIcon />}
                                     >
-                                        Mostrar Texto Simples
+                                        {this.props.t("editing.show_simple_text")}
                                     </Button>
 
                                     : <Button
@@ -1059,7 +1060,7 @@ class EditingMenu extends React.Component {
                                         onClick={() => {this.setState({showConfidence: true})}}
                                         startIcon={<ThumbUpAltIcon />}
                                     >
-                                        Mostrar Grau de Confiança
+                                        {this.props.t("editing.show_confidence")}
                                     </Button>
                             }
 
@@ -1075,7 +1076,7 @@ class EditingMenu extends React.Component {
                                 }
                                 startIcon={<SaveIcon />
                                 }>
-                                Guardar
+                                {this.props.t("editing.save")}
                             </Button>
 
                             <Button
@@ -1086,7 +1087,7 @@ class EditingMenu extends React.Component {
                                 onClick={() => this.saveChanges(true)}
                                 startIcon={<CheckRoundedIcon />
                                 }>
-                                Recriar Ficheiros
+                                {this.props.t("editing.recreate_files")}
                             </Button>
                         </Box>
                     </Box>
@@ -1138,7 +1139,7 @@ class EditingMenu extends React.Component {
                                     </IconButton>
 
                                     <span style={{display: "flex"}}>
-                                        Página
+                                        {this.props.t("editing.page")}
                                         &nbsp;
                                         {this.state.totalPages === 1
                                             ? this.state.currentPage
@@ -1215,7 +1216,7 @@ class EditingMenu extends React.Component {
                                     backgroundColor: "#f0f0f0",
                                     padding: "0px 10px"
                                 }}>
-                                    <p style={{fontSize: "18px", margin: "10px 0px 0px 0px"}}><b>Palavras</b></p>
+                                    <p style={{fontSize: "18px", margin: "10px 0px 0px 0px"}}><b>{this.props.t("editing.words")}</b></p>
                                     <CorpusDropdown
                                         ref={this.corpusSelect}
                                         options={this.state.corpusOptions}
@@ -1229,7 +1230,7 @@ class EditingMenu extends React.Component {
                                             sx={{padding: 0, textTransform: "none", color: 'blue'}}
                                             onClick={() => this.requestSyntax()}
                                         >
-                                            Verificar ortografia
+                                            {this.props.t("editing.check_spelling")}
                                         </Button>
 
                                         {
@@ -1367,4 +1368,4 @@ EditingMenu.defaultProps = {
     closeEditingMenu: null
 }
 
-export default EditingMenu;
+export default withTranslation()(EditingMenu);
