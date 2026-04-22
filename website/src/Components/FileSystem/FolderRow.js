@@ -244,7 +244,47 @@ class FolderRow extends React.Component {
                 </TableCell>
 
                 <TableCell className="explorerCell stateCell" align='center'>
-                    —
+                    {(() => {
+                        const queueStatus = this.state.info?.["queue_status"];
+                        if (!queueStatus) {
+                            return "—";
+                        }
+                        
+                        if (queueStatus.state === "active") {
+                            const duration = queueStatus.duration_seconds || 0;
+                            const minutes = Math.floor(duration / 60);
+                            const seconds = duration % 60;
+                            return (
+                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
+                                    <CircularProgress size={16} thickness={4} />
+                                    <span style={{ color: 'var(--success-color)', fontWeight: 500 }}>
+                                        {this.props.t("queue.processing")}
+                                    </span>
+                                </Box>
+                            );
+                        }
+                        
+                        if (queueStatus.state === "queued") {
+                            const position = queueStatus.position || 0;
+                            return (
+                                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                    <span style={{ color: 'var(--warning-color)', fontWeight: 500 }}>
+                                        {this.props.t("queue.pending")} (#{position})
+                                    </span>
+                                </Box>
+                            );
+                        }
+                        
+                        if (queueStatus.state === "finished") {
+                            return (
+                                <span style={{ color: 'var(--success-color)', fontWeight: 500 }}>
+                                    ✓ {this.props.t("queue.finished")}
+                                </span>
+                            );
+                        }
+                        
+                        return "—";
+                    })()}
                 </TableCell>
             </TableRow>
         </>)

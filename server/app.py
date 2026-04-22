@@ -3,6 +3,8 @@ import os
 import random
 import shutil
 import string
+import time
+import uuid
 from datetime import timedelta
 from http import HTTPStatus
 from threading import Lock
@@ -618,35 +620,68 @@ def get_original():
 @app.route("/delete-path", methods=["POST"])
 @requires_json_path
 def delete_path():
+    import logging as log
+    log.info(f"DELETE-PATH: Received request with data: {request.json}")
+    
     inputs_path, files_path, outputs_path, inputs_base, files_base, private_space, is_private = format_filesystem_path(request.json)
+    
+    log.info(f"DELETE-PATH: inputs_path={inputs_path}")
+    log.info(f"DELETE-PATH: files_path={files_path}")
+    log.info(f"DELETE-PATH: outputs_path={outputs_path}")
+    log.info(f"DELETE-PATH: exists(inputs_path)={os.path.exists(inputs_path) if inputs_path else 'None'}")
+    log.info(f"DELETE-PATH: exists(files_path)={os.path.exists(files_path) if files_path else 'None'}")
+    log.info(f"DELETE-PATH: exists(outputs_path)={os.path.exists(outputs_path) if outputs_path else 'None'}")
+    
     try:
-        # avoid deleting roots
+        # avoid deleting roots (only check paths that exist)
         if (
-            os.path.samefile(INPUTS_PATH, inputs_path)
-            or os.path.samefile(FILES_PATH, files_path)
-            or os.path.samefile(OUTPUTS_PATH, outputs_path)
-            or os.path.samefile(PRIVATE_PATH, inputs_path)
-            or os.path.samefile(inputs_path, inputs_base)
-            or os.path.samefile(files_path, files_base)
+            (inputs_path and os.path.exists(inputs_path) and os.path.samefile(INPUTS_PATH, inputs_path))
+            or (files_path and os.path.exists(files_path) and os.path.samefile(FILES_PATH, files_path))
+            or (outputs_path and os.path.exists(outputs_path) and os.path.samefile(OUTPUTS_PATH, outputs_path))
+            or (inputs_path and os.path.exists(inputs_path) and os.path.samefile(PRIVATE_PATH, inputs_path))
+            or (inputs_path and os.path.exists(inputs_path) and inputs_base and os.path.samefile(inputs_path, inputs_base))
+            or (files_path and os.path.exists(files_path) and files_base and os.path.samefile(files_path, files_base))
         ):
+            log.warning("DELETE-PATH: Attempted to delete root directory, aborting")
             abort(HTTPStatus.NOT_FOUND)
 
         # FIXME: uncomment when searching feature is improved and re-enabled
         # delete_structure(es, files_path)
 
+        deleted_something = False
+        
         # Delete from all three locations
-        if os.path.exists(inputs_path):
+        if inputs_path and os.path.exists(inputs_path):
             if os.path.isfile(inputs_path):
                 os.remove(inputs_path)
+                log.info(f"DELETE-PATH: Removed file {inputs_path}")
             else:
                 shutil.rmtree(inputs_path)
-        if os.path.exists(files_path):
+                log.info(f"DELETE-PATH: Removed directory {inputs_path}")
+            deleted_something = True
+            
+        if files_path and os.path.exists(files_path):
             shutil.rmtree(files_path)
-        if os.path.exists(outputs_path):
+            log.info(f"DELETE-PATH: Removed {files_path}")
+            deleted_something = True
+            
+        if outputs_path and os.path.exists(outputs_path):
             shutil.rmtree(outputs_path)
-    except FileNotFoundError:
+            log.info(f"DELETE-PATH: Removed {outputs_path}")
+            deleted_something = True
+        
+        if not deleted_something:
+            log.warning(f"DELETE-PATH: No files found to delete")
+            abort(HTTPStatus.NOT_FOUND)
+            
+    except FileNotFoundError as e:
+        log.error(f"DELETE-PATH: FileNotFoundError - {e}")
         abort(HTTPStatus.NOT_FOUND)
+    except Exception as e:
+        log.error(f"DELETE-PATH: Unexpected error - {e}")
+        abort(HTTPStatus.INTERNAL_SERVER_ERROR)
 
+    log.info("DELETE-PATH: Successfully deleted")
     return {
         "success": True,
         "message": "Apagado com sucesso",
@@ -1214,6 +1249,7 @@ def request_ocr():
             }
     
     multiple = req_data["multiple"] if "multiple" in req_data else False
+    config_strategy = req_data.get("config_strategy", "override_all")
 
     if multiple:
         # For folder OCR, scan _files for document folders
@@ -1235,12 +1271,40 @@ def request_ocr():
             basename = get_file_basename(f_path)
             log.info(f"📄 Initializing file {idx}/{len(files_list)}: {basename}")
 
-            # Determine which config to use
-            file_config = config
-            if file_config is None:
+            # Determine which config to use based on strategy
+            if config_strategy == "override_all":
+                # Use folder config if provided, otherwise file config
+                file_config = config if config else (data.get("config") if data.get("config") != "default" else None)
+                if file_config is None:
+                    inherited = get_inherited_config(f_path, is_private)
+                    if inherited:
+                        file_config = inherited
+                        
+            elif config_strategy == "respect_individual":
+                # Always use file's own config, ignore folder config
+                file_config = None
                 if "config" in data and data["config"] != "default":
                     file_config = data["config"]
                 else:
+                    inherited = get_inherited_config(f_path, is_private)
+                    if inherited:
+                        file_config = inherited
+                        
+            elif config_strategy == "hybrid":
+                # Use file config if exists, otherwise use folder config
+                file_config = None
+                if "config" in data and data["config"] != "default":
+                    file_config = data["config"]  # File has custom config, use it
+                elif config:
+                    file_config = config  # No file config, use folder config
+                else:
+                    inherited = get_inherited_config(f_path, is_private)
+                    if inherited:
+                        file_config = inherited
+            else:
+                # Default fallback behavior (same as override_all)
+                file_config = config if config else (data.get("config") if data.get("config") != "default" else None)
+                if file_config is None:
                     inherited = get_inherited_config(f_path, is_private)
                     if inherited:
                         file_config = inherited
@@ -1260,7 +1324,9 @@ def request_ocr():
                 "ocr": {"progress": 0},
                 "status": {
                     "stage": "queued",
-                    "message": f"Na fila (ficheiro {idx}/{len(files_list)})",
+                    "message": f"queued file",
+                "message_current": idx,
+                "message_total": len(files_list),
                 },
                 "pdf": {"complete": False},
                 "pdf_indexed": {"complete": False},
@@ -1282,18 +1348,66 @@ def request_ocr():
             if os.path.exists(f"{f_path}/_images"):
                 shutil.rmtree(f"{f_path}/_images")
         
-        # Queue sequential processing via new task
-        celery.send_task(
-            "process_folder_sequential",
-            kwargs={
+        # Check folder concurrency limit and queue management
+        from src.utils.system_settings import get_system_settings, update_system_setting
+        
+        settings = get_system_settings()
+        max_concurrent = settings.get("max_concurrent_folders", 1)
+        active_folders = settings.get("active_folders", [])
+        
+        log.info(f"📊 FOLDER OCR: max_concurrent={max_concurrent}, active_count={len(active_folders)}, queued_count={len(settings.get('queued_folders', []))}")
+        
+        folder_id = str(uuid.uuid4())  # unique ID for this folder operation
+        
+        if len(active_folders) < max_concurrent:
+            # Start processing immediately
+            folder_entry = {
+                "id": folder_id,
+                "path": files_path,
+                "started_at": time.time()
+            }
+            active_folders.append(folder_entry)
+            update_system_setting("active_folders", active_folders)
+            
+            log.info(f"➕ FOLDER OCR: Added to active_folders [folder_id: {folder_id}, active_count_after: {len(active_folders)}]")
+            
+            # Queue sequential processing via new task
+            celery.send_task(
+                "process_folder_sequential",
+                kwargs={
+                    "folder_id": folder_id,
+                    "files_list": files_list,
+                    "config": config,
+                    "is_private": is_private
+                },
+                ignore_result=True
+            )
+            
+            log.info(f"✅ FOLDER OCR: Sequential processing started for {len(files_list)} file(s) [folder_id: {folder_id}]")
+        else:
+            # Queue for later
+            queued_folders = settings.get("queued_folders", [])
+            queued_folders.append({
+                "id": folder_id,
+                "path": files_path,
                 "files_list": files_list,
                 "config": config,
-                "is_private": is_private
-            },
-            ignore_result=True
-        )
-        
-        log.info(f"✅ FOLDER OCR: Sequential processing started for {len(files_list)} file(s)")
+                "is_private": is_private,
+                "queued_at": time.time()
+            })
+            update_system_setting("queued_folders", queued_folders)
+            
+            # Update all files in folder to show "folder queued" status
+            for f_path, _ in files_list:
+                data_path = f"{f_path}/_data.json"
+                data = get_data(data_path)
+                data["status"] = {
+                    "stage": "queued",
+                    "message": "folder queued",
+                }
+                update_json_file(data_path, data)
+            
+            log.info(f"📋 FOLDER OCR: Queued {len(files_list)} file(s) for later processing [folder_id: {folder_id}, position: {len(queued_folders)}]")
     else:
         # Single file processing - keep existing immediate queue behavior
         files_list = [(files_path, outputs_path)]
@@ -1364,7 +1478,7 @@ def request_ocr():
     
     return {
         "success": True,
-        "message": "O OCR começou, por favor aguarde",
+        "message": "ocr started",
     }
 
 
@@ -1508,8 +1622,22 @@ def submit_text():
 
     if remake_files:
         log.info(f"[DEBUG submit_text] Sending to make_changes with config: {data.get('config', 'NO CONFIG KEY')}")
+        # Construct outputs_path from files_path
+        if is_private:
+            # For private spaces: PRIVATE_PATH/space_id/_files/... -> PRIVATE_PATH/space_id/_outputs/...
+            outputs_path = path.replace("/_files/", "/_outputs/")
+        else:
+            # For public: FILES_PATH/... -> OUTPUTS_PATH/...
+            outputs_path = path.replace(FILES_PATH, OUTPUTS_PATH)
+        
         celery.send_task(
-            "make_changes", kwargs={"path": path, "data": data}, ignore_result=True
+            "make_changes", 
+            kwargs={
+                "files_path": path, 
+                "outputs_path": outputs_path,
+                "data": data
+            }, 
+            ignore_result=True
         )
 
     return {"success": True}
@@ -2127,6 +2255,54 @@ def save_ocr_config():
     return {"success": True, "message": message}
 
 
+@app.route("/admin/get-folder-concurrency", methods=["GET"])
+@auth_required("token", "session")
+@roles_required("Admin")
+def get_folder_concurrency():
+    """Get current folder concurrency settings."""
+    from src.utils.system_settings import get_system_settings
+    
+    settings = get_system_settings()
+    return {
+        "success": True,
+        "max_concurrent_folders": settings.get("max_concurrent_folders", 1),
+        "active_count": len(settings.get("active_folders", [])),
+        "queued_count": len(settings.get("queued_folders", []))
+    }
+
+
+@app.route("/admin/set-folder-concurrency", methods=["POST"])
+@auth_required("token", "session")
+@roles_required("Admin")
+def set_folder_concurrency():
+    """Set maximum concurrent folder OCR operations."""
+    from src.utils.system_settings import update_system_setting
+    
+    data = request.json
+    if "max_concurrent_folders" not in data:
+        return bad_request("Missing parameter 'max_concurrent_folders'")
+    
+    max_concurrent = data["max_concurrent_folders"]
+    try:
+        max_concurrent = int(max_concurrent)
+        if max_concurrent < 1:
+            return {
+                "success": False,
+                "message": "Must be at least 1"
+            }
+        
+        update_system_setting("max_concurrent_folders", max_concurrent)
+        return {
+            "success": True,
+            "message": "Folder concurrency limit updated successfully"
+        }
+    except ValueError:
+        return {
+            "success": False,
+            "message": "Must be a valid integer"
+        }
+
+
 @app.route("/admin/delete-config", methods=["POST"])
 @auth_required("token", "session")
 @roles_required("Admin")
@@ -2199,6 +2375,8 @@ def get_queue_status():
         processing_files = []
         
         if os.path.exists(FILES_PATH):
+            # First pass: collect all queued files
+            queued_file_data = []
             for root, dirs, files in os.walk(FILES_PATH):
                 if "_data.json" in files:
                     data_file = os.path.join(root, "_data.json")
@@ -2209,18 +2387,10 @@ def get_queue_status():
                         
                         if status_stage == "queued":
                             basename = get_file_basename(root)
-                            # Extract queue position from message if available (format: "Na fila (ficheiro 1/4)")
-                            queue_position = None
-                            if "ficheiro" in status_message or "file" in status_message.lower():
-                                import re
-                                match = re.search(r'(\d+)/(\d+)', status_message)
-                                if match:
-                                    queue_position = f"{match.group(1)}/{match.group(2)}"
-                            
-                            queued_files.append({
+                            queued_file_data.append({
                                 'name': basename,
                                 'path': root.replace(FILES_PATH, "").strip("/"),
-                                'position': queue_position,
+                                'root': root,
                                 'message': status_message
                             })
                         
@@ -2238,11 +2408,76 @@ def get_queue_status():
                             })
                     except Exception as e:
                         continue
+            
+            # Second pass: Group queued files by parent folder and dynamically recalculate positions
+            # This ensures positions update as files complete (e.g., 3/4 → 2/3 after first file finishes)
+            from collections import defaultdict
+            folder_groups = defaultdict(list)
+            
+            for file_data in queued_file_data:
+                # Get parent folder path (everything except the filename)
+                parent_folder = os.path.dirname(file_data['root'])
+                folder_groups[parent_folder].append(file_data)
+            
+            # Assign dynamic positions within each folder group
+            for parent_folder, files in folder_groups.items():
+                total_in_folder = len(files)
+                # Sort by original message to preserve order
+                files_sorted = sorted(files, key=lambda x: x['message'])
+                
+                for idx, file_data in enumerate(files_sorted, 1):
+                    queued_files.append({
+                        'name': file_data['name'],
+                        'path': file_data['path'],
+                        'position': f"{idx}/{total_in_folder}",
+                        'message': file_data['message']
+                    })
         
         # Sort queued files by position if available
         queued_files.sort(key=lambda x: int(x['position'].split('/')[0]) if x.get('position') else 999)
         # Sort processing files by percentage (showing highest progress first)
         processing_files.sort(key=lambda x: x.get('percentage', 0), reverse=True)
+        
+        # Get folder queue information from system settings
+        from src.utils.system_settings import get_system_settings
+        folder_queue_info = {'active_folders': [], 'queued_folders': []}
+        try:
+            settings = get_system_settings()
+            active_folders = settings.get("active_folders", [])
+            queued_folders = settings.get("queued_folders", [])
+            
+            # Format active folders for display
+            for folder in active_folders:
+                folder_path = folder.get("path", "")
+                folder_name = os.path.basename(folder_path) if folder_path else "Unknown"
+                started_at = folder.get("started_at", 0)
+                duration = int(time.time() - started_at) if started_at else 0
+                
+                folder_queue_info['active_folders'].append({
+                    'id': folder.get('id', ''),
+                    'name': folder_name,
+                    'path': folder_path.replace(FILES_PATH, "").strip("/"),
+                    'duration_seconds': duration
+                })
+            
+            # Format queued folders for display
+            for idx, folder in enumerate(queued_folders, 1):
+                folder_path = folder.get("path", "")
+                folder_name = os.path.basename(folder_path) if folder_path else "Unknown"
+                files_count = len(folder.get("files_list", []))
+                queued_at = folder.get("queued_at", 0)
+                wait_time = int(time.time() - queued_at) if queued_at else 0
+                
+                folder_queue_info['queued_folders'].append({
+                    'id': folder.get('id', ''),
+                    'name': folder_name,
+                    'path': folder_path.replace(FILES_PATH, "").strip("/"),
+                    'position': idx,
+                    'files_count': files_count,
+                    'wait_time_seconds': wait_time
+                })
+        except Exception as e:
+            log.warning(f"Could not get folder queue info: {e}")
         
         # Get worker stats
         stats = inspect.stats()
@@ -2275,6 +2510,7 @@ def get_queue_status():
             'total_pending': reserved_total + scheduled_total,
             'queued_files': queued_files,
             'processing_files': processing_files,
+            'folder_queue': folder_queue_info,
         }
     except Exception as e:
         import logging as log

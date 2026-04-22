@@ -960,7 +960,7 @@ class EditingMenu extends React.Component {
             <Box>
                 <Notification message={""} severity={"success"} ref={this.successNot}/>
                 <Notification message={""} severity={"error"} ref={this.errorNotifRef}/>
-                <ConfirmLeave leaveFunc={this.leave} ref={this.confirmLeave} />
+                <ConfirmLeave leaveFunc={this.leave} saveAndLeaveFunc={() => this.saveChanges(true)} ref={this.confirmLeave} />
                 {<>
                     <Box className="toolbar">
                         <Box className="noMarginRight" sx={{display: "flex"}}>

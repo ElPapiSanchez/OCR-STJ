@@ -83,6 +83,92 @@ class FolderCard extends React.Component {
         this.props.deleteItem(this.props.name);
     }
 
+    getQueueStatusBadge() {
+        const queueStatus = this.state.info?.["queue_status"];
+        if (!queueStatus) return null;
+
+        if (queueStatus.state === "active") {
+            return (
+                <Box 
+                    key="folder-active" 
+                    className="status-badge info" 
+                    sx={{ 
+                        position: 'absolute', 
+                        top: 'var(--spacing-sm)', 
+                        right: 'var(--spacing-sm)',
+                        backgroundColor: 'rgba(76, 175, 80, 0.9)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: 'var(--spacing-xs) var(--spacing-sm)',
+                        borderRadius: 'var(--radius-sm)',
+                        fontSize: 'var(--font-size-xs)',
+                        fontWeight: 600,
+                        color: 'white',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                    }}
+                >
+                    <CircularProgress size={12} sx={{ mr: '4px', color: 'white' }} />
+                    {this.props.t("queue.processing")}
+                </Box>
+            );
+        }
+
+        if (queueStatus.state === "queued") {
+            const position = queueStatus.position || 0;
+            return (
+                <Box 
+                    key="folder-queued" 
+                    className="status-badge warning" 
+                    sx={{ 
+                        position: 'absolute', 
+                        top: 'var(--spacing-sm)', 
+                        right: 'var(--spacing-sm)',
+                        backgroundColor: 'rgba(255, 152, 0, 0.9)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: 'var(--spacing-xs) var(--spacing-sm)',
+                        borderRadius: 'var(--radius-sm)',
+                        fontSize: 'var(--font-size-xs)',
+                        fontWeight: 600,
+                        color: 'white',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                    }}
+                >
+                    {this.props.t("queue.pending")} (#{position})
+                </Box>
+            );
+        }
+
+        if (queueStatus.state === "finished") {
+            return (
+                <Box 
+                    key="folder-finished" 
+                    className="status-badge success" 
+                    sx={{ 
+                        position: 'absolute', 
+                        top: 'var(--spacing-sm)', 
+                        right: this.state.isHovered ? '3rem' : 'var(--spacing-sm)',
+                        backgroundColor: 'rgba(76, 175, 80, 0.9)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: 'var(--spacing-xs) var(--spacing-sm)',
+                        borderRadius: 'var(--radius-sm)',
+                        fontSize: 'var(--font-size-xs)',
+                        fontWeight: 600,
+                        color: 'white',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                        transition: 'right 0.2s ease-in-out',
+                        zIndex: 1
+                    }}
+                >
+                    ✓ {this.props.t("queue.finished")}
+                </Box>
+            );
+        }
+
+        return null;
+    }
+
     render() {
         if (!this.state.info) {
             return (
@@ -111,6 +197,7 @@ class FolderCard extends React.Component {
                         ) : (
                             <FolderIcon sx={{ fontSize: '6rem', color: 'var(--gold-600)' }} />
                         )}
+                        {this.getQueueStatusBadge()}
                         {usingCustomConfig && (
                             <Tooltip title={this.props.t("custom config")}>
                                 <SettingsSuggestIcon
@@ -159,6 +246,8 @@ class FolderCard extends React.Component {
                             size="small"
                             onClick={(e) => this.handleOptionsClick(e)}
                             sx={{
+                                position: 'relative',
+                                zIndex: 2,
                                 '&:hover': {
                                     backgroundColor: 'var(--accent-primary)',
                                     color: 'white'

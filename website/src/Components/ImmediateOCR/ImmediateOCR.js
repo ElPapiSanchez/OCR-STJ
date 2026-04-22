@@ -20,8 +20,11 @@ import MenuItem from '@mui/material/MenuItem';
 import TextField from '@mui/material/TextField';
 import Switch from '@mui/material/Switch';
 import Divider from '@mui/material/Divider';
+import Grid from '@mui/material/Grid';
+import Card from '@mui/material/Card';
+import CardContent from '@mui/material/CardContent';
 
-import HomeIcon from '@mui/icons-material/Home';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CloudUploadIcon from '@mui/icons-material/CloudUpload';
 import FlashOnIcon from '@mui/icons-material/FlashOn';
 import DownloadIcon from '@mui/icons-material/Download';
@@ -30,6 +33,9 @@ import DeleteIcon from '@mui/icons-material/Delete';
 import CheckboxList from 'Components/Form/CheckboxList';
 import { tesseractLangList } from 'defaultOcrConfigs';
 import Footer from 'Components/Footer/Footer';
+import { MODEL, STJ } from 'App';
+import logoApp from "static/logoApp.png";
+import logoUN from "static/Logo_of_the_United_Nations.svg";
 
 // Construct API URL, removing any double slashes
 const apiPath = process.env.REACT_APP_API_URL || 'api';
@@ -482,6 +488,37 @@ class ImmediateOCR extends React.Component {
         }
     }
     
+    rerunOCR() {
+        // Cleanup previous results but keep the file
+        if (this.state.docId) {
+            this.cleanup();
+        }
+        
+        if (this.pollInterval) {
+            clearInterval(this.pollInterval);
+            this.pollInterval = null;
+        }
+        
+        // Reset processing state but keep the uploaded file and settings
+        this.setState({
+            docId: null,
+            status: 'idle',
+            progress: 0,
+            statusMessage: '',
+            errorMessage: '',
+            availableResults: {
+                txt: false,
+                pdf: false,
+                pdf_indexed: false
+            },
+            resultSizes: {
+                txt: null,
+                pdf: { compressed: null, uncompressed: null },
+                pdf_indexed: { compressed: null, uncompressed: null }
+            }
+        });
+    }
+    
     componentDidMount() {
         // Fetch presets list
         axios.get(API_URL + '/presets-list')
@@ -515,53 +552,88 @@ class ImmediateOCR extends React.Component {
         const hasError = status === 'error';
         
         return (
-            <Box sx={{ 
-                minHeight: '100vh', 
-                display: 'flex', 
-                flexDirection: 'column',
-                backgroundColor: 'var(--gray-50)'
-            }}>
+            <Box 
+                className={`App ${MODEL === STJ ? "theme-stj" : "theme-un"}`}
+                sx={{
+                    minHeight: "100vh",
+                    backgroundColor: "var(--gray-50)",
+                    display: "flex",
+                    flexDirection: "column"
+                }}
+            >
                 {/* Header */}
-                <Box sx={{ 
-                    backgroundColor: 'white',
-                    borderBottom: '1px solid var(--border-color)',
-                    padding: 'var(--spacing-md) var(--spacing-xl)',
-                    boxShadow: 'var(--shadow-sm)'
-                }}>
-                    <Box sx={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'space-between'
+                <Box 
+                    className="header animate-slideInDown"
+                    sx={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "var(--spacing-sm)",
+                        padding: "var(--spacing-md) var(--spacing-xl)",
+                        backgroundColor: "var(--card-bg)",
+                        boxShadow: "var(--shadow-sm)",
+                    }}
+                >
+                    <Box sx={{
+                        display: "flex",
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        width: "100%",
                     }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                            <FlashOnIcon sx={{ fontSize: 32, color: 'var(--accent-primary)' }} />
-                            <Typography variant="h4" component="h1" sx={{ fontWeight: 600 }}>
+                        <Box sx={{display: "flex", alignItems: "center", gap: "var(--spacing-md)"}}>
+                            <img
+                                src={MODEL === STJ ? logoApp : logoUN}
+                                alt={MODEL === STJ ? "Logótipo do STJ" : "Logótipo da UN"}
+                                style={{
+                                    maxHeight: "45px",
+                                    transition: "transform var(--transition-base)",
+                                }}
+                            />
+                            
+                            <Typography
+                                variant="h5"
+                                component="h1"
+                                className="fancy-font"
+                                sx={{
+                                    display: {xs: "none", md: "block"},
+                                    color: "var(--header-text)",
+                                }}
+                            >
                                 {t('immediate ocr')}
                             </Typography>
                         </Box>
-                        
+
                         <Button
                             component={Link}
                             to="/"
                             variant="outlined"
-                            startIcon={<HomeIcon />}
-                            sx={{ textTransform: 'none' }}
+                            startIcon={<ArrowBackIcon />}
+                            sx={{
+                                textTransform: "none",
+                                borderColor: "var(--border-color)",
+                                color: "var(--text-primary)",
+                                '&:hover': {
+                                    borderColor: "var(--accent-primary)",
+                                    backgroundColor: "var(--card-hover-bg)",
+                                }
+                            }}
                         >
-                            {t('return to home')}
+                            {t("back") || "Back"}
                         </Button>
                     </Box>
                 </Box>
-                
+
                 {/* Main Content */}
-                <Box sx={{ 
-                    flex: 1,
-                    padding: 'var(--spacing-xl)',
-                    maxWidth: '1200px',
-                    width: '100%',
-                    margin: '0 auto'
+                <Box sx={{
+                    flexGrow: 1,
+                    width: '87vw',
+                    marginLeft: 'auto',
+                    marginRight: 'auto',
+                    marginTop: 'var(--spacing-lg)',
+                    marginBottom: 'var(--spacing-lg)',
                 }}>
                     {/* Info Alert */}
-                    <Alert severity="info" sx={{ mb: 3 }}>
+                    <Alert severity="info" sx={{ mb: 2 }}>
                         {t('temporary processing note')}
                     </Alert>
                     
@@ -569,7 +641,7 @@ class ImmediateOCR extends React.Component {
                     {hasError && errorMessage && (
                         <Alert 
                             severity="error" 
-                            sx={{ mb: 3 }}
+                            sx={{ mb: 2 }}
                             action={
                                 <Button 
                                     color="inherit" 
@@ -588,39 +660,73 @@ class ImmediateOCR extends React.Component {
                             {errorMessage}
                         </Alert>
                     )}
-                    
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                        {/* File Upload Section */}
-                        <Paper sx={{ p: 3 }}>
-                            <Typography variant="h6" sx={{ mb: 2 }}>
-                                {t('upload for immediate ocr')}
-                            </Typography>
-                            
+
+                    {/* Three Column Layout */}
+                    <Box sx={{
+                        display: 'flex',
+                        flexDirection: 'row',
+                        justifyContent: 'space-evenly',
+                    }}>
+                    {/* Left Column - Upload & Languages */}
+                    <Box sx={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        maxHeight: '65vh',
+                        overflowY: 'auto',
+                        overflowX: 'visible',
+                        paddingRight: '1.5rem',
+                        paddingLeft: '3rem',
+                        paddingTop: '0.25rem',
+                        paddingBottom: '0.5rem',
+                        width: '40%'
+                    }}>
+                        {/* Upload Section */}
+                        <Box sx={{ mb: 2 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', marginBottom: '0.75rem' }}>
+                                <Typography component="legend" sx={{ fontWeight: 500 }}>
+                                    {t('upload for immediate ocr')}
+                                </Typography>
+                            </Box>
                             <Box
                                 onDrop={this.handleDrop}
                                 onDragOver={this.handleDragOver}
                                 sx={{
-                                    border: '2px dashed var(--border-color)',
+                                    border: '2px dashed',
+                                    borderColor: uploadedFile ? 'success.main' : 'var(--border-color)',
                                     borderRadius: 'var(--radius-md)',
-                                    padding: '40px',
+                                    padding: '24px',
                                     textAlign: 'center',
-                                    backgroundColor: uploadedFile ? 'var(--success-light)' : 'var(--gray-50)',
+                                    backgroundColor: uploadedFile ? 'rgba(46, 125, 50, 0.08)' : 'var(--gray-50)',
                                     cursor: 'pointer',
-                                    transition: 'all 0.3s',
+                                    transition: 'all 0.2s',
                                     '&:hover': {
                                         borderColor: 'var(--accent-primary)',
-                                        backgroundColor: 'var(--accent-light)'
+                                        backgroundColor: uploadedFile ? 'rgba(46, 125, 50, 0.12)' : 'var(--accent-light)'
                                     }
                                 }}
                                 onClick={() => this.fileInputRef.current?.click()}
                             >
-                                <CloudUploadIcon sx={{ fontSize: 48, color: 'var(--text-secondary)', mb: 2 }} />
-                                <Typography variant="body1" sx={{ mb: 1 }}>
+                                <CloudUploadIcon sx={{ 
+                                    fontSize: 36, 
+                                    color: uploadedFile ? 'success.main' : 'var(--text-secondary)', 
+                                    mb: 1 
+                                }} />
+                                <Typography variant="body2" sx={{ fontWeight: 500, mb: 0.5 }}>
                                     {uploadedFile ? t('file uploaded') : t('drag drop files')}
                                 </Typography>
                                 {uploadedFile && (
-                                    <Typography variant="body2" sx={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
-                                        {uploadedFile.name} ({(uploadedFile.size / 1024 / 1024).toFixed(2)} MB)
+                                    <>
+                                        <Typography variant="body2" sx={{ color: 'text.primary', display: 'block', mt: 1, fontWeight: 500 }}>
+                                            {uploadedFile.name}
+                                        </Typography>
+                                        <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 0.5 }}>
+                                            {(uploadedFile.size / 1024 / 1024).toFixed(2)} MB
+                                        </Typography>
+                                    </>
+                                )}
+                                {!uploadedFile && (
+                                    <Typography variant="caption" sx={{ color: 'var(--text-secondary)', display: 'block', mt: 0.5 }}>
+                                        {t('supported formats')}: PDF, JPG, PNG, TIFF, ZIP
                                     </Typography>
                                 )}
                                 <input
@@ -631,278 +737,316 @@ class ImmediateOCR extends React.Component {
                                     style={{ display: 'none' }}
                                 />
                             </Box>
-                        </Paper>
-                        
-                        {/* Configuration Section */}
-                        <Paper sx={{ p: 3 }}>
-                            <Typography variant="h6" sx={{ mb: 2 }}>
-                                {t('config ocr')}
+                        </Box>
+
+                        {/* Languages Section */}
+                        <Box sx={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem', marginTop: '1rem' }}>
+                            <Typography component="legend" sx={{ fontWeight: 500 }}>
+                                {t('select languages')}
                             </Typography>
-                            
-                            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                                {/* Language Selection */}
-                                <Box>
-                                    <CheckboxList
-                                        title={t('select languages')}
-                                        options={tesseractLangList().map(lang => ({
-                                            value: lang.value,
-                                            description: t(lang.translationKey),
-                                            disabled: lang.disabled
-                                        }))}
-                                        checked={selectedLanguages}
-                                        onChangeCallback={(checked) => this.setState({ selectedLanguages: checked })}
-                                        required
-                                        showOrder
-                                        helperText={t('language hint')}
-                                        errorText={t('language required')}
-                                    />
-                                </Box>
-                                
-                                <Divider />
-                                
-                                {/* Preset Selection */}
-                                <FormControl fullWidth>
-                                    <InputLabel id="preset-select-label">{t('select preset')}</InputLabel>
-                                    <Select
-                                        labelId="preset-select-label"
-                                        value={selectedPreset}
-                                        label={t('select preset')}
-                                        onChange={(e) => this.setState({ selectedPreset: e.target.value })}
-                                    >
-                                        {presetsList.map((preset) => (
-                                            <MenuItem key={preset} value={preset}>
-                                                {t(`presets.${preset}`)}
-                                            </MenuItem>
-                                        ))}
-                                    </Select>
-                                </FormControl>
-                            </Box>
-                        </Paper>
-                        
-                        {/* Output Formats Section */}
-                        <Paper sx={{ p: 3 }}>
-                            <Typography variant="h6" sx={{ mb: 2 }}>
-                                {t('select output formats')}
+                        </Box>
+                        <CheckboxList
+                            title=""
+                            options={tesseractLangList().map(lang => ({
+                                value: lang.value,
+                                description: t(lang.translationKey),
+                                disabled: lang.disabled
+                            }))}
+                            checked={selectedLanguages}
+                            onChangeCallback={(checked) => this.setState({ selectedLanguages: checked })}
+                            required
+                            showOrder
+                            helperText={t('language hint')}
+                            errorText={t('language required')}
+                        />
+                    </Box>
+
+                    {/* Middle Column - Preset & Process Button */}
+                    <Box sx={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        width: '25%',
+                        maxHeight: '65vh',
+                        overflowY: 'auto',
+                        overflowX: 'visible',
+                        paddingRight: '1rem',
+                        paddingLeft: '0.5rem',
+                        paddingTop: '0.25rem',
+                        paddingBottom: '0.5rem',
+                    }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
+                            <Typography component="legend" sx={{ fontWeight: 500 }}>
+                                {t('select preset')}
                             </Typography>
-                            
-                            <FormGroup>
-                                <FormControlLabel
-                                    control={
-                                        <Checkbox
-                                            checked={outputFormats.txt}
-                                            onChange={() => this.toggleOutputFormat('txt')}
-                                        />
-                                    }
-                                    label={t('plain text')}
-                                />
-                                <FormControlLabel
-                                    control={
-                                        <Checkbox
-                                            checked={outputFormats.pdf}
-                                            onChange={() => this.toggleOutputFormat('pdf')}
-                                        />
-                                    }
-                                    label={t('pdf simple')}
-                                />
-                                <FormControlLabel
-                                    control={
-                                        <Checkbox
-                                            checked={outputFormats.pdf_indexed}
-                                            onChange={() => this.toggleOutputFormat('pdf_indexed')}
-                                        />
-                                    }
-                                    label={t('pdf searchable')}
-                                />
-                            </FormGroup>
-                            
-                            <Divider sx={{ my: 2 }} />
-                            
-                            {/* Compression Toggle */}
-                            <FormControlLabel
-                                control={
-                                    <Checkbox
-                                        checked={enableCompression}
-                                        onChange={(e) => {
-                                            this.setState({ enableCompression: e.target.checked });
-                                        }}
-                                    />
-                                }
-                                label={
-                                    <Box>
-                                        <Typography variant="body1">{t('enable compression')}</Typography>
-                                        <Typography variant="caption" color="text.secondary">
-                                            {t('compression info')}
-                                        </Typography>
-                                    </Box>
-                                }
-                            />
-                            
-                            {/* Compression Settings */}
-                            {enableCompression && (
-                                <Box sx={{ mt: 2, pl: 4 }}>
-                                    <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-                                        {t('compression settings')}
-                                    </Typography>
+                        </Box>
+                        <FormControl fullWidth size="small">
+                            <InputLabel id="preset-select-label">{t('ocr preset')}</InputLabel>
+                            <Select
+                                labelId="preset-select-label"
+                                value={selectedPreset}
+                                label={t('ocr preset')}
+                                onChange={(e) => this.setState({ selectedPreset: e.target.value })}
+                            >
+                                {presetsList.map((preset) => (
+                                    <MenuItem key={preset} value={preset}>
+                                        {t(`presets.${preset}`)}
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
 
-                                    {/* Target DPI */}
-                                    <TextField
-                                        label={t('compression target dpi')}
-                                        type="number"
-                                        size="small"
-                                        fullWidth
-                                        value={this.state.compressionTargetDpi}
-                                        onChange={(e) => this.setState({ compressionTargetDpi: e.target.value })}
-                                        inputProps={{ min: 50, max: 300 }}
-                                        sx={{ mb: 1.5 }}
-                                    />
-
-                                    {/* Background Quality */}
-                                    <TextField
-                                        label={t('compression bg quality')}
-                                        type="number"
-                                        size="small"
-                                        fullWidth
-                                        value={this.state.compressionBgQuality}
-                                        onChange={(e) => this.setState({ compressionBgQuality: e.target.value })}
-                                        inputProps={{ min: 1, max: 100 }}
-                                        sx={{ mb: 1.5 }}
-                                    />
-
-                                    {/* Foreground Quality */}
-                                    <TextField
-                                        label={t('compression fg quality')}
-                                        type="number"
-                                        size="small"
-                                        fullWidth
-                                        value={this.state.compressionFgQuality}
-                                        onChange={(e) => this.setState({ compressionFgQuality: e.target.value })}
-                                        inputProps={{ min: 1, max: 100 }}
-                                    />
-                                </Box>
-                            )}
-                        </Paper>
-                        
                         {/* Process Button */}
                         {!isComplete && (
                             <Button
                                 variant="contained"
                                 size="large"
+                                fullWidth
                                 startIcon={isProcessing ? <CircularProgress size={20} color="inherit" /> : <FlashOnIcon />}
                                 onClick={this.processFile}
-                                disabled={!uploadedFile || isProcessing}
+                                disabled={!uploadedFile || isProcessing || selectedLanguages.length === 0}
                                 sx={{ 
+                                    mt: 4,
                                     py: 1.5,
-                                    fontSize: '1.1rem',
-                                    fontWeight: 600
+                                    fontSize: '1rem',
+                                    fontWeight: 600,
+                                    boxShadow: 'var(--shadow-md)',
                                 }}
                             >
-                                {isProcessing ? statusMessage : t('process now')}
+                                {isProcessing ? t('processing') : t('process now')}
                             </Button>
                         )}
+                    </Box>
+
+                    {/* Right Column - Output Formats & Compression */}
+                    <Box sx={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        maxHeight: '65vh',
+                        overflowY: 'auto',
+                        overflowX: 'visible',
+                        paddingRight: '1.5rem',
+                        paddingLeft: '1rem',
+                        paddingTop: '0.25rem',
+                        paddingBottom: '0.5rem',
+                        width: '30%'
+                    }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}>
+                            <Typography component="legend" sx={{ fontWeight: 500 }}>
+                                {t('output formats')}
+                            </Typography>
+                        </Box>
+                        <FormGroup>
+                            <FormControlLabel
+                                control={
+                                    <Checkbox
+                                        checked={outputFormats.txt}
+                                        onChange={() => this.toggleOutputFormat('txt')}
+                                    />
+                                }
+                                label={t('plain text')}
+                            />
+                            <FormControlLabel
+                                control={
+                                    <Checkbox
+                                        checked={outputFormats.pdf}
+                                        onChange={() => this.toggleOutputFormat('pdf')}
+                                    />
+                                }
+                                label={t('pdf simple')}
+                            />
+                            <FormControlLabel
+                                control={
+                                    <Checkbox
+                                        checked={outputFormats.pdf_indexed}
+                                        onChange={() => this.toggleOutputFormat('pdf_indexed')}
+                                    />
+                                }
+                                label={t('pdf searchable')}
+                            />
+                        </FormGroup>
                         
-                        {/* Progress Section */}
-                        {isProcessing && (
-                            <Paper sx={{ p: 3 }}>
-                                <Typography variant="h6" sx={{ mb: 2 }}>
-                                    {t('processing document')}
+                        {/* Compression Settings - Only show if PDF output is selected */}
+                        {(outputFormats.pdf || outputFormats.pdf_indexed) && (
+                            <FormControl className="simpleDropdown borderTop" sx={{ paddingTop: '1rem', mt: 2 }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                    <FormControlLabel
+                                        control={
+                                            <Switch
+                                                checked={enableCompression}
+                                                onChange={(e) => this.setState({ enableCompression: e.target.checked })}
+                                                color="primary"
+                                            />
+                                        }
+                                        label={t('compress pdf')}
+                                    />
+                                </Box>
+                                <Typography variant="caption" color="text.secondary" sx={{ ml: 2, mt: 0.5 }}>
+                                    {t('compression info')}
                                 </Typography>
-                                <LinearProgress 
-                                    variant="determinate" 
-                                    value={progress} 
-                                    sx={{ height: 10, borderRadius: 5, mb: 1 }}
-                                />
-                                <Typography variant="body2" sx={{ color: 'var(--text-secondary)' }}>
-                                    {progress}% - {statusMessage}
-                                </Typography>
-                            </Paper>
+                                
+                                {enableCompression && (
+                                    <Box sx={{ mt: 2, ml: 2 }}>
+                                        <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                                            {t('compression settings')}
+                                        </Typography>
+                                        <TextField
+                                            label={t('compression target dpi')}
+                                            type="number"
+                                            size="small"
+                                            fullWidth
+                                            value={this.state.compressionTargetDpi}
+                                            onChange={(e) => this.setState({ compressionTargetDpi: e.target.value })}
+                                            inputProps={{ min: 50, max: 300 }}
+                                            sx={{ mb: 1.5 }}
+                                        />
+                                        <TextField
+                                            label={t('compression bg quality')}
+                                            type="number"
+                                            size="small"
+                                            fullWidth
+                                            value={this.state.compressionBgQuality}
+                                            onChange={(e) => this.setState({ compressionBgQuality: e.target.value })}
+                                            inputProps={{ min: 1, max: 100 }}
+                                            sx={{ mb: 1.5 }}
+                                        />
+                                        <TextField
+                                            label={t('compression fg quality')}
+                                            type="number"
+                                            size="small"
+                                            fullWidth
+                                            value={this.state.compressionFgQuality}
+                                            onChange={(e) => this.setState({ compressionFgQuality: e.target.value })}
+                                            inputProps={{ min: 1, max: 100 }}
+                                        />
+                                    </Box>
+                                )}
+                            </FormControl>
                         )}
-                        
-                        {/* Results Section */}
-                        {isComplete && (
-                            <Paper sx={{ p: 3 }}>
-                                <Typography variant="h6" sx={{ mb: 2, color: 'var(--success-main)' }}>
+                    </Box>
+                </Box>
+                
+                {/* Progress Section - Below columns */}
+                {isProcessing && (
+                    <Card sx={{ backgroundColor: 'var(--card-bg)', boxShadow: 'var(--shadow-sm)', mt: 3 }}>
+                        <CardContent>
+                            <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+                                {t('processing document')}
+                            </Typography>
+                            <LinearProgress 
+                                variant="determinate" 
+                                value={progress} 
+                                sx={{ height: 10, borderRadius: 5, mb: 1 }}
+                            />
+                            <Typography variant="body2" sx={{ color: 'var(--text-secondary)' }}>
+                                {progress}% - {statusMessage}
+                            </Typography>
+                        </CardContent>
+                    </Card>
+                )}
+                
+                {/* Results Section - Below columns */}
+                {isComplete && (
+                    <Card sx={{ backgroundColor: 'var(--card-bg)', boxShadow: 'var(--shadow-sm)', mt: 3 }}>
+                        <CardContent>
+                                <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, color: 'var(--success-main)' }}>
                                     {t('results ready')}
                                 </Typography>
                                 
-                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                <Grid container spacing={2}>
                                     {availableResults.txt && (
-                                        <Button
-                                            variant="contained"
-                                            startIcon={<DownloadIcon />}
-                                            onClick={() => this.downloadResult('txt')}
-                                            fullWidth
-                                        >
-                                            {t('download text')} {resultSizes.txt && `(${resultSizes.txt})`}
-                                        </Button>
-                                    )}
-                                    {availableResults.pdf && (
-                                        <>
+                                        <Grid item xs={12} sm={6} md={4}>
                                             <Button
                                                 variant="contained"
                                                 startIcon={<DownloadIcon />}
-                                                onClick={() => this.downloadResult('pdf')}
+                                                onClick={() => this.downloadResult('txt')}
                                                 fullWidth
                                             >
-                                                {t('download pdf')} ({t('pdf simple')}) 
-                                                {resultSizes.pdf.compressed && ` - ${resultSizes.pdf.compressed}`}
+                                                {t('download text')} {resultSizes.txt && `(${resultSizes.txt})`}
                                             </Button>
-                                            {enableCompression && resultSizes.pdf.uncompressed && (
+                                        </Grid>
+                                    )}
+                                    {availableResults.pdf && (
+                                        <>
+                                            <Grid item xs={12} sm={6} md={4}>
                                                 <Button
-                                                    variant="outlined"
+                                                    variant="contained"
                                                     startIcon={<DownloadIcon />}
-                                                    onClick={() => this.downloadResult('pdf_uncompressed')}
+                                                    onClick={() => this.downloadResult('pdf')}
                                                     fullWidth
-                                                    sx={{ ml: 2 }}
                                                 >
-                                                    {t('download pdf')} ({t('pdf simple')} - {t('uncompressed')})
-                                                    {` - ${resultSizes.pdf.uncompressed}`}
+                                                    {t('pdf simple')}
+                                                    {resultSizes.pdf.compressed && ` (${resultSizes.pdf.compressed})`}
                                                 </Button>
+                                            </Grid>
+                                            {enableCompression && resultSizes.pdf.uncompressed && (
+                                                <Grid item xs={12} sm={6} md={4}>
+                                                    <Button
+                                                        variant="outlined"
+                                                        startIcon={<DownloadIcon />}
+                                                        onClick={() => this.downloadResult('pdf_uncompressed')}
+                                                        fullWidth
+                                                    >
+                                                        {t('pdf simple')} - {t('uncompressed')}
+                                                        {` (${resultSizes.pdf.uncompressed})`}
+                                                    </Button>
+                                                </Grid>
                                             )}
                                         </>
                                     )}
                                     {availableResults.pdf_indexed && (
                                         <>
-                                            <Button
-                                                variant="contained"
-                                                startIcon={<DownloadIcon />}
-                                                onClick={() => this.downloadResult('pdf_indexed')}
-                                                fullWidth
-                                            >
-                                                {t('download pdf')} ({t('pdf searchable')})
-                                                {resultSizes.pdf_indexed.compressed && ` - ${resultSizes.pdf_indexed.compressed}`}
-                                            </Button>
-                                            {enableCompression && resultSizes.pdf_indexed.uncompressed && (
+                                            <Grid item xs={12} sm={6} md={4}>
                                                 <Button
-                                                    variant="outlined"
+                                                    variant="contained"
                                                     startIcon={<DownloadIcon />}
-                                                    onClick={() => this.downloadResult('pdf_indexed_uncompressed')}
+                                                    onClick={() => this.downloadResult('pdf_indexed')}
                                                     fullWidth
-                                                    sx={{ ml: 2 }}
                                                 >
-                                                    {t('download pdf')} ({t('pdf searchable')} - {t('uncompressed')})
-                                                    {` - ${resultSizes.pdf_indexed.uncompressed}`}
+                                                    {t('pdf searchable')}
+                                                    {resultSizes.pdf_indexed.compressed && ` (${resultSizes.pdf_indexed.compressed})`}
                                                 </Button>
+                                            </Grid>
+                                            {enableCompression && resultSizes.pdf_indexed.uncompressed && (
+                                                <Grid item xs={12} sm={6} md={4}>
+                                                    <Button
+                                                        variant="outlined"
+                                                        startIcon={<DownloadIcon />}
+                                                        onClick={() => this.downloadResult('pdf_indexed_uncompressed')}
+                                                        fullWidth
+                                                    >
+                                                        {t('pdf searchable')} - {t('uncompressed')}
+                                                        {` (${resultSizes.pdf_indexed.uncompressed})`}
+                                                    </Button>
+                                                </Grid>
                                             )}
                                         </>
                                     )}
-                                    
-                                    <Divider sx={{ my: 1 }} />
-                                    
+                                </Grid>
+                                
+                                <Divider sx={{ my: 3 }} />
+                                
+                                <Box sx={{ display: 'flex', gap: 2, justifyContent: 'center' }}>
+                                    <Button
+                                        variant="contained"
+                                        startIcon={<FlashOnIcon />}
+                                        onClick={this.rerunOCR.bind(this)}
+                                        sx={{ minWidth: 200 }}
+                                    >
+                                        {t('rerun with different settings')}
+                                    </Button>
                                     <Button
                                         variant="outlined"
                                         startIcon={<DeleteIcon />}
                                         onClick={this.resetForm}
-                                        fullWidth
+                                        sx={{ minWidth: 200 }}
                                     >
                                         {t('upload new document')}
                                     </Button>
                                 </Box>
-                            </Paper>
-                        )}
-                    </Box>
+                            </CardContent>
+                        </Card>
+                )}
                 </Box>
-                
-                <Footer />
             </Box>
         );
     }

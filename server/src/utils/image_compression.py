@@ -376,6 +376,7 @@ def mrc_pdf_from_bytes(
     inpaint_radius: int = 3,
     inpaint_dilate_px: int = 1,
     inpaint_post_blur: float = 1.5,
+    progress_callback: Optional[callable] = None,
 ) -> bytes:
     """
     Run the MRC-style pipeline on an in-memory file and return the output PDF bytes.
@@ -416,13 +417,23 @@ def mrc_pdf_from_bytes(
     print(f"📦 DPI: input={input_dpi:.1f}, target={target_dpi:.1f}, scale={(target_dpi/input_dpi):.4f}")
     print(f"📦 Settings: bg_quality={bg_quality}, fg_quality={fg_quality}, mask_method={mask_method}")
 
+    # Get total page count for progress tracking
+    total_pages = 1
     if is_pdf:
+        pdf_doc = fitz.open(stream=file_bytes, filetype="pdf")
+        total_pages = pdf_doc.page_count
+        pdf_doc.close()
         input_dpi = float(int(round(input_dpi)))
         page_iter = _iter_pil_pages_from_pdf_bytes(file_bytes, render_dpi=int(round(input_dpi)))
-        print(f"📦 Loading PDF with render_dpi={int(round(input_dpi))}")
+        print(f"📦 Loading PDF with render_dpi={int(round(input_dpi))}, total_pages={total_pages}")
     elif is_tiff:
+        tiff_img = Image.open(io.BytesIO(file_bytes))
+        try:
+            total_pages = tiff_img.n_frames
+        except AttributeError:
+            total_pages = 1
         page_iter = _iter_pil_pages_from_tiff_bytes(file_bytes)
-        print(f"📦 Loading TIFF iterator")
+        print(f"📦 Loading TIFF iterator, total_pages={total_pages}")
     else:
         page_iter = _iter_pil_pages_from_image_bytes(file_bytes)
         print(f"📦 Loading single image")
@@ -543,6 +554,11 @@ def mrc_pdf_from_bytes(
             del bg_bytes, fg_bytes, mask_bytes
 
         print(f"📦 Page {page_index}: Complete!")
+        
+        # Call progress callback if provided
+        if progress_callback:
+            progress_callback(page_index, total_pages)
+        
         gc.collect()
 
     print(f"📦 Finalizing PDF...")

@@ -60,6 +60,13 @@ class DocumentRow extends React.Component {
         this.getImages = this.getImages.bind(this);
     }
 
+    componentDidUpdate(prevProps) {
+        // Update local state when info prop changes (e.g., after saving config)
+        if (prevProps.info !== this.props.info) {
+            this.updateInfo(this.props.info);
+        }
+    }
+
     updateInfo(info) {
         if (this.state.info?.["status"]?.stage !== "post-ocr" && info?.["status"]?.stage === "post-ocr") {
             this.setState({info: info, expanded: true});
@@ -528,7 +535,17 @@ class DocumentRow extends React.Component {
                     : status?.stage === "error"
                         ? <TableCell className="explorerCell stateCell errorCell" align='left'>
                             <Box className="stateBox">
-                                <span>{this.props.t("upload error")}</span>
+                                <span>
+                                    {status.message 
+                                        ? (status.message_page 
+                                            ? this.props.t(status.message, { page: status.message_page })
+                                            : status.message_details
+                                                ? `${this.props.t(status.message)}: ${status.message_details}`
+                                                : this.props.t(status.message)
+                                        )
+                                        : this.props.t("upload error")
+                                    }
+                                </span>
                             </Box>
                         </TableCell>
 
@@ -549,14 +566,11 @@ class DocumentRow extends React.Component {
                     ? <TableCell className="explorerCell stateCell infoCell" align='left'>
                         <Box className="stateBox">
                             <CircularProgress sx={{ml: '1rem', mr: '1rem', flexShrink: "0"}} size='1rem' />
-                            <span>OCR</span>
-                            &nbsp;
-                            <span>{info["ocr"]["progress"]}/{info["pages"]}</span>
-                            &nbsp;
-                            &nbsp;
                             <span>
-                            { /* message is expected to be time estimate */
-                                status.message
+                            { /* message with current/total for page progress */
+                                status.message && status.message_current && status.message_total
+                                    ? this.props.t(status.message, { current: status.message_current, total: status.message_total })
+                                    : status.message
                             }
                             </span>
                         </Box>
@@ -566,7 +580,14 @@ class DocumentRow extends React.Component {
                     ? <TableCell className="explorerCell stateCell infoCell" align='left'>
                         <Box className="stateBox">
                             <CircularProgress sx={{ml: '1rem', mr: '1rem', flexShrink: "0"}} size='1rem' />
-                            <span>{status.message}</span>
+                            <span>
+                                {status.message && status.message_current && status.message_total
+                                    ? this.props.t(status.message, { current: status.message_current, total: status.message_total })
+                                    : status.message 
+                                        ? this.props.t(status.message)
+                                        : ""
+                                }
+                            </span>
                         </Box>
                     </TableCell>
 
@@ -575,13 +596,15 @@ class DocumentRow extends React.Component {
                         <Box className="stateBox">
                             <CircularProgress 
                                 sx={{ml: '1rem', mr: '1rem', flexShrink: "0"}} 
-                                size='1rem' 
-                                variant={status.progress !== undefined ? "determinate" : "indeterminate"}
-                                value={status.progress || 0}
+                                size='1rem'
                             />
                             <span>
-                                {status.message}
-                                {status.progress !== undefined && ` (${Math.round(status.progress)}%)`}
+                                {status.current && status.total
+                                    ? this.props.t("compressing file page", { current: status.current, total: status.total })
+                                    : status.message
+                                        ? this.props.t(status.message)
+                                        : this.props.t("compressing")
+                                }
                             </span>
                         </Box>
                     </TableCell>
@@ -589,14 +612,14 @@ class DocumentRow extends React.Component {
                     : info["edited_results"]  // expected stage when this is true is "post-ocr" so much be checked before
                         ? <TableCell className="explorerCell stateCell infoCell" align='left'>
                             <Box className="stateBox">
-                                Resultados editados, ficheiros por recriar
+                                {this.props.t("edited results files to recreate")}
                             </Box>
                         </TableCell>
 
                     : status?.stage === "post-ocr"
                     ? <TableCell className="explorerCell stateCell successCell" align='left'>
                         <Box className="stateBox">
-                            <DoneIcon color="primary" />
+                            <span style={{ marginLeft: '0.5rem' }}>✓ {this.props.t("queue.finished")}</span>
                         </Box>
                     </TableCell>
 

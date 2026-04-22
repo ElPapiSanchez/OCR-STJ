@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState, useRef, useImperativeHandle, forwardRef } from 'react';
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import Modal from '@mui/material/Modal';
 import Button from '@mui/material/Button';
 import IconButton from '@mui/material/IconButton';
+import CircularProgress from '@mui/material/CircularProgress';
 import CloseRoundedIcon from '@mui/icons-material/CloseRounded';
+import { useTranslation } from 'react-i18next';
 
 import Notification from 'Components/Notifications/Notification';
 
@@ -27,69 +29,112 @@ const crossStyle = {
     right: '0.5rem'
 }
 
-class ConfirmLeave extends React.Component {
-    constructor(props) {
-        super(props);
-        this.state = {
-            open: false,
+const ConfirmLeave = forwardRef((props, ref) => {
+    const { leaveFunc, saveAndLeaveFunc } = props;
+    const { t } = useTranslation();
+    const [open, setOpen] = useState(false);
+    const [saving, setSaving] = useState(false);
+    
+    const successNot = useRef();
+    const errorNot = useRef();
+
+    // Expose toggleOpen method to parent via ref
+    useImperativeHandle(ref, () => ({
+        toggleOpen() {
+            setOpen(!open);
+            setSaving(false); // Reset saving state when reopening
         }
+    }));
 
-        this.textField = React.createRef();
-        this.successNot = React.createRef();
-        this.errorNot = React.createRef();
-    }
+    const confirm = () => {
+        if (leaveFunc) {
+            leaveFunc();
+        }
+    };
 
-    toggleOpen() {
-        this.setState({ open: !this.state.open });
-    }
+    const saveAndConfirm = () => {
+        if (saveAndLeaveFunc) {
+            setSaving(true);
+            saveAndLeaveFunc();
+        }
+    };
 
-    confirm() {
-        this.props.leaveFunc();
-    }
+    const toggleModal = () => {
+        setOpen(!open);
+        setSaving(false); // Reset saving state when closing
+    };
 
-    render() {
-        return (
-            <Box>
-                <Notification message={""} severity={"success"} ref={this.successNot}/>
-                <Notification message={""} severity={"error"} ref={this.errorNot}/>
-                <Modal open={this.state.open}>
-                    <Box sx={style}>
-                        <Typography id="modal-modal-title" variant="h6" component="h2">
-                            Tem a certeza que quer sair?
-                        </Typography>
+    return (
+        <Box>
+            <Notification message={""} severity={"success"} ref={successNot}/>
+            <Notification message={""} severity={"error"} ref={errorNot}/>
+            <Modal open={open}>
+                <Box sx={style}>
+                    <Typography id="modal-modal-title" variant="h6" component="h2">
+                        {t("confirm leave title")}
+                    </Typography>
 
-                        <p style={{color: 'var(--primary-red)'}}><b>Se sair sem gravar, irá perder qualquer alteração que tenha feito!</b></p>
+                    <p style={{color: 'var(--primary-red)'}}><b>{t("confirm leave warning")}</b></p>
 
-                        <Box sx={{
-                            display: 'flex',
-                            flexDirection: 'row'
-                        }}>
-                            <Button
-                                variant="contained"
-                                sx={{
-                                    border: '1px solid black',
-                                    mt: '0.5rem',
-                                    backgroundColor: 'var(--primary-red)',
-                                }}
-                                onClick={() => this.confirm()}
-                            >
-                                Sim, tenho a certeza
-                            </Button>
-                        </Box>
-
-                        <IconButton sx={crossStyle} aria-label="close" onClick={() => this.toggleOpen()}>
-                            <CloseRoundedIcon />
-                        </IconButton>
+                    <Box sx={{
+                        display: 'flex',
+                        flexDirection: 'row',
+                        gap: '1rem'
+                    }}>
+                        <Button
+                            variant="contained"
+                            disabled={saving}
+                            sx={{
+                                border: '1px solid black',
+                                mt: '0.5rem',
+                                backgroundColor: '#4caf50',
+                                color: 'white !important',
+                                '&:hover': {
+                                    backgroundColor: '#2e7d32',
+                                },
+                                '&:disabled': {
+                                    backgroundColor: '#a5d6a7',
+                                    color: 'white !important',
+                                }
+                            }}
+                            onClick={saveAndConfirm}
+                        >
+                            {saving ? (
+                                <>
+                                    <CircularProgress size={16} sx={{ color: 'white', mr: 1 }} />
+                                    {t("saving")}...
+                                </>
+                            ) : (
+                                t("save and leave button")
+                            )}
+                        </Button>
+                        <Button
+                            variant="contained"
+                            disabled={saving}
+                            sx={{
+                                border: '1px solid black',
+                                mt: '0.5rem',
+                                backgroundColor: 'var(--primary-red)',
+                                color: 'white',
+                            }}
+                            onClick={confirm}
+                        >
+                            {t("confirm leave button")}
+                        </Button>
                     </Box>
-                </Modal>
-            </Box>
-        )
-    }
-}
+
+                    <IconButton sx={crossStyle} aria-label="close" onClick={toggleModal}>
+                        <CloseRoundedIcon />
+                    </IconButton>
+                </Box>
+            </Modal>
+        </Box>
+    );
+});
 
 ConfirmLeave.defaultProps = {
-    // functions:
-    leaveFunc: null
-}
+    leaveFunc: null,
+    saveAndLeaveFunc: null
+};
 
 export default ConfirmLeave;

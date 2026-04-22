@@ -681,7 +681,7 @@ class FileExplorer extends React.Component {
      * Export the .txt or .pdf file
      */
     getDocument(type, file, extension, suffix="") {
-        this.successNot.current.openNotif("A transferência do ficheiro começou, por favor aguarde");
+        this.successNot.current.openNotif(this.props.t("file download started"));
 
         let path = this.props.current_folder + '/' + file;
         if (this.props._private) { path = this.props.spaceId + '/' + path }
@@ -702,7 +702,7 @@ class FileExplorer extends React.Component {
     }
 
     getDocumentUncompressed(type, file, extension, suffix="") {
-        this.successNot.current.openNotif("A transferência do ficheiro começou, por favor aguarde");
+        this.successNot.current.openNotif(this.props.t("file download started"));
 
         let path = this.props.current_folder + '/' + file;
         if (this.props._private) { path = this.props.spaceId + '/' + path }
@@ -723,7 +723,7 @@ class FileExplorer extends React.Component {
     }
 
     getEntities(file) {
-        this.successNot.current.openNotif("A transferência do ficheiro começou, por favor aguarde");
+        this.successNot.current.openNotif(this.props.t("file download started"));
 
         let path = this.props.current_folder + '/' + file;
         if (this.props._private) { path = this.props.spaceId + '/' + path }
@@ -802,7 +802,7 @@ class FileExplorer extends React.Component {
     */
 
     getOriginalFile(file) {
-        this.successNot.current.openNotif("A transferência do ficheiro começou, por favor aguarde");
+        this.successNot.current.openNotif(this.props.t("file download started"));
 
         let path = this.props.current_folder + '/' + file;
         if (this.props._private) { path = this.props.spaceId + '/' + path }
@@ -826,7 +826,7 @@ class FileExplorer extends React.Component {
      * Export the .zip file
      */
     getImages(file) {
-        this.successNot.current.openNotif("A transferência do ficheiro começou, por favor aguarde");
+        this.successNot.current.openNotif(this.props.t("file download started"));
 
         let path = this.props.current_folder + '/' + file;
         if (this.props._private) { path = this.props.spaceId + '/' + path }

@@ -64,7 +64,7 @@ class FolderMenu extends React.Component {
 
     createFolder() {
         if (this.state.textFieldValue.length === 0) {
-            this.errorNot.current.openNotif("Deve atribuir um nome à pasta");
+            this.errorNot.current.openNotif(i18n.t("folder name required"));
             return;
         }
         this.setState({ buttonDisabled: true });
@@ -83,7 +83,7 @@ class FolderMenu extends React.Component {
             .then(data => {
                 this.setState({ buttonDisabled: false });
                 if (data.success) {
-                    this.successNot.current.openNotif("Pasta criada com sucesso");
+                    this.successNot.current.openNotif(i18n.t("folder created successfully"));
 
                     this.closeMenu(this.props.submitCallback);
                 } else {

@@ -167,7 +167,16 @@ const QueueMonitor = ({ compact = false, autoRefresh = true, refreshInterval = 5
 
     if (!queueData) return null;
 
-    const { queue, workers, total_pending, queued_files = [], processing_files = [] } = queueData;
+    const { 
+        queue, 
+        workers, 
+        total_pending, 
+        queued_files = [], 
+        processing_files = [],
+        folder_queue = { active_folders: [], queued_folders: [] }
+    } = queueData;
+    
+    const { active_folders = [], queued_folders = [] } = folder_queue;
 
     // Compact view for header/navbar
     if (compact) {
@@ -276,6 +285,108 @@ const QueueMonitor = ({ compact = false, autoRefresh = true, refreshInterval = 5
                     </CardContent>
                 </Card>
             </Box>
+
+            {/* Folder Queue Status - NEW SECTION */}
+            {(active_folders.length > 0 || queued_folders.length > 0) && (
+                <Card sx={{ backgroundColor: 'var(--card-bg)', boxShadow: 'var(--shadow-sm)', mb: 2 }}>
+                    <CardContent>
+                        <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600, color: 'var(--accent-primary)' }}>
+                            {t('queue.folder_queue_status') || 'Folder Queue Status'}
+                        </Typography>
+
+                        {/* Active Folders */}
+                        {active_folders.length > 0 && (
+                            <Box sx={{ mb: 2 }}>
+                                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 500 }}>
+                                    {t('queue.active_folders') || 'Currently Processing Folders'}
+                                </Typography>
+                                {active_folders.map((folder, index) => (
+                                    <Box 
+                                        key={folder.id || index}
+                                        sx={{ 
+                                            mb: 1.5,
+                                            padding: 1.5,
+                                            borderRadius: 1,
+                                            backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                                            border: '1px solid rgba(76, 175, 80, 0.3)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between'
+                                        }}
+                                    >
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
+                                            <PlayArrowIcon sx={{ color: 'var(--success-color)', fontSize: 20 }} />
+                                            <Box sx={{ flex: 1 }}>
+                                                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                                    {folder.name}
+                                                </Typography>
+                                                <Typography variant="caption" color="textSecondary">
+                                                    {folder.path}
+                                                </Typography>
+                                            </Box>
+                                        </Box>
+                                        <Chip 
+                                            label={`${Math.floor(folder.duration_seconds / 60)}m ${folder.duration_seconds % 60}s`}
+                                            size="small"
+                                            color="success"
+                                            variant="outlined"
+                                        />
+                                    </Box>
+                                ))}
+                            </Box>
+                        )}
+
+                        {/* Queued Folders */}
+                        {queued_folders.length > 0 && (
+                            <Box>
+                                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 500 }}>
+                                    {t('queue.queued_folders_display') || 'Folders Waiting in Queue'}
+                                </Typography>
+                                {queued_folders.map((folder) => (
+                                    <Box 
+                                        key={folder.id}
+                                        sx={{ 
+                                            mb: 1.5,
+                                            padding: 1.5,
+                                            borderRadius: 1,
+                                            backgroundColor: 'rgba(255, 152, 0, 0.1)',
+                                            border: '1px solid rgba(255, 152, 0, 0.3)',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between'
+                                        }}
+                                    >
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flex: 1 }}>
+                                            <ScheduleIcon sx={{ color: 'var(--warning-color)', fontSize: 20 }} />
+                                            <Box sx={{ flex: 1 }}>
+                                                <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                                                    {folder.name}
+                                                </Typography>
+                                                <Typography variant="caption" color="textSecondary">
+                                                    {folder.path} • {folder.files_count} {t('queue.files') || 'files'}
+                                                </Typography>
+                                            </Box>
+                                        </Box>
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                            <Chip 
+                                                label={`${t('queue.position') || 'Position'}: ${folder.position}`}
+                                                size="small"
+                                                color="warning"
+                                                variant="outlined"
+                                            />
+                                            <Chip 
+                                                label={`${Math.floor(folder.wait_time_seconds / 60)}m ${folder.wait_time_seconds % 60}s`}
+                                                size="small"
+                                                variant="outlined"
+                                            />
+                                        </Box>
+                                    </Box>
+                                ))}
+                            </Box>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
 
             {/* Task Details */}
             {(queue.active.total > 0 || queue.reserved.total > 0 || queue.scheduled.total > 0) && (

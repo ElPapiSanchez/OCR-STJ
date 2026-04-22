@@ -556,6 +556,56 @@ def get_folder_info(inputs_path, files_path, private_space=None, is_private=Fals
                 folder_size = dirs_dict[root] = size + subdir_size
         data["size"] = size_to_units(folder_size)
 
+    # Check if folder is in queue (active, queued, or finished)
+    if data.get("type") == "folder":
+        try:
+            from src.utils.system_settings import get_system_settings
+            import time
+            
+            settings = get_system_settings()
+            active_folders = settings.get("active_folders", [])
+            queued_folders = settings.get("queued_folders", [])
+            finished_folders = settings.get("finished_folders", [])
+            
+            # Check if this folder is active
+            for folder in active_folders:
+                if folder.get("path") == files_path:
+                    started_at = folder.get("started_at", 0)
+                    duration = int(time.time() - started_at) if started_at else 0
+                    data["queue_status"] = {
+                        "state": "active",
+                        "folder_id": folder.get("id"),
+                        "duration_seconds": duration
+                    }
+                    break
+            else:
+                # Check if this folder is queued
+                for idx, folder in enumerate(queued_folders, 1):
+                    if folder.get("path") == files_path:
+                        queued_at = folder.get("queued_at", 0)
+                        wait_time = int(time.time() - queued_at) if queued_at else 0
+                        data["queue_status"] = {
+                            "state": "queued",
+                            "folder_id": folder.get("id"),
+                            "position": idx,
+                            "wait_time_seconds": wait_time
+                        }
+                        break
+                else:
+                    # Check if this folder recently finished
+                    for folder in finished_folders:
+                        if folder.get("path") == files_path:
+                            data["queue_status"] = {
+                                "state": "finished",
+                                "folder_id": folder.get("id"),
+                                "completed_at": int(folder.get("completed_at", 0))
+                            }
+                            break
+        except Exception as e:
+            # If there's any error checking queue status, just skip it
+            import logging as log
+            log.debug(f"Could not check folder queue status: {e}")
+
     # Sanitize important paths from the info key to get relative path
     if is_private and private_space:
         relative_path = files_path.replace(f"{PRIVATE_PATH}/{private_space}/_files", "").strip("/")

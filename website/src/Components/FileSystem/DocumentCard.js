@@ -34,6 +34,7 @@ class DocumentCard extends React.Component {
             contextMenu: null,
             imageLoaded: false,
             imageError: false,
+            isHovered: false,
         };
     }
 
@@ -153,6 +154,61 @@ class DocumentCard extends React.Component {
             return badges;
         }
 
+        // Error state
+        if (status?.stage === "error") {
+            const errorMsg = status.message 
+                ? this.props.t(status.message) 
+                : this.props.t("error");
+            badges.push(
+                <Box key="error" className="status-badge error" sx={{ position: 'absolute', top: 'var(--spacing-sm)', left: 'var(--spacing-sm)' }}>
+                    <ErrorIcon sx={{ fontSize: '0.875rem', mr: '4px' }} />
+                    {errorMsg}
+                </Box>
+            );
+            return badges;
+        }
+
+        // Compression in progress
+        if (status?.stage === "compressing") {
+            const currentPage = status.current;
+            const totalPages = status.total;
+            badges.push(
+                <Box key="compressing" className="status-badge info" sx={{ position: 'absolute', top: 'var(--spacing-sm)', left: 'var(--spacing-sm)' }}>
+                    <CircularProgress 
+                        size={12} 
+                        sx={{ mr: '4px' }} 
+                    />
+                    {currentPage && totalPages
+                        ? this.props.t("compressing file page", { current: currentPage, total: totalPages })
+                        : this.props.t("compressing")
+                    }
+                </Box>
+            );
+            return badges;
+        }
+
+        // Exporting stage
+        if (status?.stage === "exporting") {
+            badges.push(
+                <Box key="exporting" className="status-badge info" sx={{ position: 'absolute', top: 'var(--spacing-sm)', left: 'var(--spacing-sm)' }}>
+                    <CircularProgress size={12} sx={{ mr: '4px' }} />
+                    {this.props.t("exporting")}
+                </Box>
+            );
+            return badges;
+        }
+
+        // Waiting/queued stage
+        if (status?.stage === "waiting") {
+            badges.push(
+                <Box key="waiting" className="status-badge info" sx={{ position: 'absolute', top: 'var(--spacing-sm)', left: 'var(--spacing-sm)' }}>
+                    <CircularProgress size={12} sx={{ mr: '4px' }} />
+                    {this.props.t("preparing ocr")}
+                </Box>
+            );
+            return badges;
+        }
+
         // OCR progress badge (in progress)
         if (ocrInfo) {
             const progress = ocrInfo["progress"];
@@ -169,35 +225,41 @@ class DocumentCard extends React.Component {
             }
         }
 
-        // Persistent indicators (can show multiple at once)
-        // OCR complete indicator (bottom-right)
-        // Show if OCR has been performed (progress equals pages OR creation time exists)
-        const ocrComplete = ocrInfo && 
-                          (ocrInfo["progress"] === info["pages"] || 
-                           ocrInfo["creation"] !== undefined);
-        
-        if (ocrComplete && stored === true) {
+        // Cancelled state
+        if (status?.stage === "cancelled") {
             badges.push(
-                <Tooltip key="ocr-complete" title={this.props.t("ocr complete")} placement="top">
-                    <Box 
-                        sx={{ 
-                            position: 'absolute', 
-                            bottom: 'var(--spacing-sm)', 
-                            right: 'var(--spacing-sm)',
-                            backgroundColor: '#4caf50',
-                            borderRadius: '50%',
-                            width: '32px',
-                            height: '32px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                            opacity: 1,
-                        }}
-                    >
-                        <OcrIcon sx={{ fontSize: '1rem', color: 'white', opacity: 1 }} />
-                    </Box>
-                </Tooltip>
+                <Box key="cancelled" className="status-badge warning" sx={{ position: 'absolute', top: 'var(--spacing-sm)', left: 'var(--spacing-sm)' }}>
+                    {this.props.t("ocr cancelled")}
+                </Box>
+            );
+            return badges;
+        }
+
+        // Persistent indicators (can show multiple at once)
+        // OCR complete indicator (top-right) - styled like folder finished badge
+        if (status?.stage === "post-ocr" && stored === true) {
+            badges.push(
+                <Box 
+                    key="ocr-complete" 
+                    sx={{ 
+                        position: 'absolute', 
+                        top: 'var(--spacing-sm)', 
+                        right: this.state.isHovered ? '3rem' : 'var(--spacing-sm)',
+                        backgroundColor: 'rgba(76, 175, 80, 0.9)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        padding: 'var(--spacing-xs) var(--spacing-sm)',
+                        borderRadius: 'var(--radius-sm)',
+                        fontSize: 'var(--font-size-xs)',
+                        fontWeight: 600,
+                        color: 'white',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                        transition: 'right 0.2s ease-in-out',
+                        zIndex: 1
+                    }}
+                >
+                    ✓ {this.props.t("queue.finished")}
+                </Box>
             );
         }
 
@@ -257,6 +319,8 @@ class DocumentCard extends React.Component {
                     className="file-card animate-fadeIn"
                     onClick={() => this.documentClicked()}
                     onContextMenu={(e) => this.handleContextMenu(e)}
+                    onMouseEnter={() => this.setState({ isHovered: true })}
+                    onMouseLeave={() => this.setState({ isHovered: false })}
                     sx={{ opacity: stored === false ? 0.7 : 1, cursor: stored === true ? 'pointer' : 'default' }}
                 >
                     <Box className="file-card-thumbnail">
@@ -297,6 +361,8 @@ class DocumentCard extends React.Component {
                             size="small"
                             onClick={(e) => this.handleOptionsClick(e)}
                             sx={{
+                                position: 'relative',
+                                zIndex: 2,
                                 '&:hover': {
                                     backgroundColor: 'var(--accent-primary)',
                                     color: 'white'

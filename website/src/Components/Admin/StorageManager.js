@@ -64,6 +64,10 @@ const StorageManager = (props) => {
     const [refreshing, setRefreshing] = useState(true);
     const [lastUpdate, setLastUpdate] = useState(null);
 
+    const [maxConcurrentFolders, setMaxConcurrentFolders] = useState(1);
+    const [activeFolderCount, setActiveFolderCount] = useState(0);
+    const [queuedFolderCount, setQueuedFolderCount] = useState(0);
+
     const [scheduleType, setScheduleType] = useState("interval");
 
     const [everyHours, setEveryHours] = useState('');
@@ -114,8 +118,49 @@ const StorageManager = (props) => {
             });
     }
 
+    function getFolderConcurrency() {
+        axios.get(API_URL + '/admin/get-folder-concurrency')
+            .then(({ data }) => {
+                if (data.success) {
+                    setMaxConcurrentFolders(data.max_concurrent_folders);
+                    setActiveFolderCount(data.active_count);
+                    setQueuedFolderCount(data.queued_count);
+                }
+            })
+            .catch(err => {
+                console.error('Failed to fetch folder concurrency:', err);
+            });
+    }
+
+    function saveFolderConcurrency() {
+        axios.post(API_URL + '/admin/set-folder-concurrency',
+            {
+                max_concurrent_folders: parseInt(maxConcurrentFolders)
+            },
+            {
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+            })
+            .then(response => {
+                if (response.status !== 200) {
+                    throw new Error(t("admin.request_failed"));
+                }
+                if (response.data["success"]) {
+                    successNotif.current.openNotif(t("admin.folder_concurrency_updated"));
+                    getFolderConcurrency();  // Refresh the counts
+                } else {
+                    throw new Error(response.data["message"]);
+                }
+            })
+            .catch(err => {
+                errorNotif.current.openNotif(err.message);
+            });
+    }
+
     useEffect(() => {
         getStorageInfo();
+        getFolderConcurrency();
     }, []);
 
     const deleteApiDocument = useCallback(() => {
@@ -581,6 +626,60 @@ const StorageManager = (props) => {
                     paddingLeft: '10px',
                     borderLeft: '1px solid black',
                 }}>
+                    <Box sx={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        marginBottom: '2rem',
+                        paddingBottom: '1.5rem',
+                        borderBottom: '1px solid #ccc',
+                    }}>
+                        <Typography variant="h5" component="h2" sx={{ marginBottom: '1rem' }}>
+                            {t("admin.folder_concurrency_title")}
+                        </Typography>
+
+                        <Box sx={{
+                            display: 'flex',
+                            flexDirection: 'row',
+                            justifyContent: 'space-between',
+                            marginBottom: '1rem',
+                        }}>
+                            <Typography>
+                                {t("admin.active_folders")}: {activeFolderCount}
+                            </Typography>
+                            <Typography>
+                                {t("admin.queued_folders")}: {queuedFolderCount}
+                            </Typography>
+                        </Box>
+
+                        <Box sx={{
+                            display: 'flex',
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                        }}>
+                            <TextField
+                                label={t("admin.max_concurrent_folders")}
+                                type="number"
+                                value={maxConcurrentFolders}
+                                onChange={(e) => setMaxConcurrentFolders(e.target.value)}
+                                size="small"
+                                variant="outlined"
+                                inputProps={{ min: 1 }}
+                                sx={{ width: '60%' }}
+                            />
+                            <Button
+                                color="success"
+                                variant="contained"
+                                className="menuFunctionButton"
+                                startIcon={<CheckRoundedIcon />}
+                                onClick={saveFolderConcurrency}
+                                disabled={!maxConcurrentFolders || parseInt(maxConcurrentFolders) < 1}
+                            >
+                                {t("confirm")}
+                            </Button>
+                        </Box>
+                    </Box>
+
                     <Box sx={{
                         display: 'flex',
                         flexDirection: 'row',

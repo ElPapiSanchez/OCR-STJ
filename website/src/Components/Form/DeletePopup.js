@@ -64,8 +64,19 @@ class DeletePopup extends React.Component {
 
     deleteItem() {
         this.setState({ buttonDisabled: true });
-        const path = this.state.path + '/' + this.state.filename;
-        fetch(API_URL + '/delete-path', {
+        // Handle empty path (root folder)
+        const path = this.state.path ? 
+            `${this.state.path}/${this.state.filename}` : 
+            this.state.filename;
+        const url = API_URL + '/delete-path';
+        console.log('Deleting with URL:', url);
+        console.log('Delete - state.path:', this.state.path);
+        console.log('Delete - state.filename:', this.state.filename);
+        console.log('Delete - combined path:', path);
+        console.log('Delete - _private:', this.props._private);
+        console.log('API_URL:', API_URL);
+        
+        fetch(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -75,7 +86,15 @@ class DeletePopup extends React.Component {
                 "_private": this.props._private
             })
         })
-        .then(response => {return response.json()})
+        .then(async response => {
+            console.log('Response status:', response.status, response.statusText);
+            const text = await response.text();
+            console.log('Response body:', text);
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return JSON.parse(text);
+        })
         .then(data => {
             this.setState({ buttonDisabled: false });
             if (data.success) {
@@ -85,6 +104,11 @@ class DeletePopup extends React.Component {
             } else {
                 this.errorNot.current.openNotif(data.error);
             }
+        })
+        .catch(error => {
+            this.setState({ buttonDisabled: false });
+            console.error('Delete error:', error);
+            this.errorNot.current.openNotif('Failed to delete: ' + error.message);
         });
     }
 

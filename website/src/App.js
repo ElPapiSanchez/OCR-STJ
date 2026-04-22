@@ -40,7 +40,7 @@ import {
     ocrMenuState
 } from "./states";
 
-import logoSTJ from "static/logoSTJ.svg";
+import logoApp from "static/logoApp.png";
 import logoUN from "static/Logo_of_the_United_Nations.svg"
 import FileExplorer from 'Components/FileSystem/FileSystem';
 import ESPage from 'Components/ElasticSearchPage/ESPage';
@@ -281,10 +281,10 @@ function App() {
                         }}>
                             <Box sx={{display: "flex", alignItems: "center", gap: "var(--spacing-md)"}}>
                                 <img
-                                    src={MODEL === STJ ? logoSTJ : logoUN}
+                                    src={MODEL === STJ ? logoApp : logoUN}
                                     alt={MODEL === STJ ? "Logótipo do STJ" : "Logótipo da UN"}
                                     style={{
-                                        maxHeight: "45px",
+                                        maxHeight: "80px",
                                         transition: "transform var(--transition-base)",
                                     }}
                                     onMouseEnter={(e) => e.target.style.transform = "scale(1.05)"}

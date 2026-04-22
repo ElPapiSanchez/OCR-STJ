@@ -123,7 +123,7 @@ def _export_pdf_compress_first(
         {
             "status": {
                 "stage": "compressing",
-                "message": "A comprimir ficheiro original...",
+                "message": "compressing file",
                 "percentage": 41,  # Compression starts at 41%
             }
         },
@@ -180,6 +180,7 @@ def _export_pdf_compress_first(
             fg_quality=compression_fg_quality,
             mask_method="sauvola",
             flatten_to_jpeg=compression_flatten,
+            progress_callback=compression_progress,
         )
         
         compression_time = time.time() - start_time
@@ -195,7 +196,7 @@ def _export_pdf_compress_first(
             {
                 "status": {
                     "stage": "compressing",
-                    "message": "Compressão concluída",
+                    "message": "compression complete",
                     "percentage": 95,
                 }
             },
@@ -1004,7 +1005,9 @@ def export_pdf(
                 {
                     "status": {
                         "stage": "exporting",
-                        "message": f"A gerar PDF {'com índice ' if not simple else ''}{current_page}/{total_pages}",
+                        "message": "generating pdf with index page" if not simple else "generating pdf page",
+                        "message_current": current_page,
+                        "message_total": total_pages,
                     }
                 },
             )
@@ -1027,7 +1030,7 @@ def export_pdf(
             {
                 "status": {
                     "stage": "exporting",
-                    "message": "A gerar CSV",
+                    "message": "generating csv",
                 }
             },
         )
@@ -1039,7 +1042,7 @@ def export_pdf(
             {
                 "status": {
                     "stage": "exporting",
-                    "message": "A gerar índice",
+                    "message": "generating index",
                 }
             },
         )
@@ -1143,11 +1146,11 @@ def export_pdf(
                 elif stage == "processing":
                     message = f"A comprimir PDF - Página {current_page}/{total_pages}"
                 elif stage == "finalizing":
-                    message = "A comprimir PDF - A finalizar..."
+                    message = "compressing pdf finalizing"
                 elif stage == "complete":
-                    message = "Compressão concluída"
+                    message = "compression complete"
                 else:
-                    message = "A comprimir PDF"
+                    message = "compressing pdf"
                 
                 update_json_file(
                     data_file,

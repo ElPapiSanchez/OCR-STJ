@@ -12,6 +12,11 @@ import InputLabel from '@mui/material/InputLabel';
 import Select from '@mui/material/Select';
 import MenuItem from '@mui/material/MenuItem';
 import Tooltip from '@mui/material/Tooltip';
+import Radio from '@mui/material/Radio';
+import RadioGroup from '@mui/material/RadioGroup';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import FormLabel from '@mui/material/FormLabel';
+import FormHelperText from '@mui/material/FormHelperText';
 
 import Notification from 'Components/Notifications/Notification';
 import i18next from 'i18next';
@@ -50,6 +55,7 @@ class OcrPopup extends React.Component {
             
             presetsList: [],
             selectedPreset: "default",
+            configStrategy: "hybrid",
         }
 
         this.successNot = React.createRef();
@@ -66,6 +72,7 @@ class OcrPopup extends React.Component {
         this.handleClickOutsideMenu = this.handleClickOutsideMenu.bind(this);
         this.fetchPresetsList = this.fetchPresetsList.bind(this);
         this.handlePresetChange = this.handlePresetChange.bind(this);
+        this.handleStrategyChange = this.handleStrategyChange.bind(this);
     }
     
     componentDidMount() {
@@ -90,6 +97,10 @@ class OcrPopup extends React.Component {
     handlePresetChange(event) {
         this.setState({ selectedPreset: event.target.value });
     }
+    
+    handleStrategyChange(event) {
+        this.setState({ configStrategy: event.target.value });
+    }
 
     handleClickOutsideMenu() {
         if (this.state.open) {
@@ -106,6 +117,7 @@ class OcrPopup extends React.Component {
             alreadyOcr: alreadyOcr,
             customConfig: customConfig,
             selectedPreset: "default", // Reset to default when opening
+            configStrategy: "hybrid", // Reset to hybrid when opening
         });
     }
 
@@ -118,6 +130,7 @@ class OcrPopup extends React.Component {
             alreadyOcr: false,
             customConfig: null,
             selectedPreset: "default",
+            configStrategy: "hybrid",
         }, callback);
     }
 
@@ -140,6 +153,11 @@ class OcrPopup extends React.Component {
             body["config"] = this.state.selectedPreset;
         }
         // If selectedPreset is "default" or null, don't send config (use system default)
+        
+        // Send config strategy if folder OCR
+        if (this.state.isFolder) {
+            body["config_strategy"] = this.state.configStrategy;
+        }
 
         fetch(API_URL + '/request-ocr', {
             method: 'POST',
@@ -151,12 +169,12 @@ class OcrPopup extends React.Component {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    this.successNot.current.openNotif(data.message);
+                    this.successNot.current.openNotif(i18next.t(data.message));
                 } else {
                     if (data.error) {
                         this.props.showStorageForm(data.error);
                     } else {
-                        this.errorNot.current.openNotif(data.message);
+                        this.errorNot.current.openNotif(i18next.t(data.message));
                     }
                 }
 
@@ -220,6 +238,35 @@ class OcrPopup extends React.Component {
                                             </MenuItem>
                                         ))}
                                     </Select>
+                                </FormControl>
+                            )}
+
+                            {this.state.isFolder && !hasCustomConfig && (
+                                <FormControl component="fieldset" sx={{ mb: 3, width: '100%' }}>
+                                    <FormLabel component="legend">{i18next.t("config strategy")}</FormLabel>
+                                    <RadioGroup
+                                        aria-label="config strategy"
+                                        name="config-strategy"
+                                        value={this.state.configStrategy}
+                                        onChange={this.handleStrategyChange}
+                                    >
+                                        <FormControlLabel 
+                                            value="override_all" 
+                                            control={<Radio />} 
+                                            label={i18next.t("config strategy override")} 
+                                        />
+                                        <FormControlLabel 
+                                            value="respect_individual" 
+                                            control={<Radio />} 
+                                            label={i18next.t("config strategy respect")} 
+                                        />
+                                        <FormControlLabel 
+                                            value="hybrid" 
+                                            control={<Radio />} 
+                                            label={i18next.t("config strategy hybrid")} 
+                                        />
+                                    </RadioGroup>
+                                    <FormHelperText>{i18next.t("config strategy hint")}</FormHelperText>
                                 </FormControl>
                             )}
 

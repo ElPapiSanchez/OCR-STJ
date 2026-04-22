@@ -8,7 +8,7 @@ import KeyboardArrowDownRoundedIcon from '@mui/icons-material/KeyboardArrowDownR
 import KeyboardArrowUpRoundedIcon from '@mui/icons-material/KeyboardArrowUpRounded';
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
 
-import logoSTJ from '../../../static/logoSTJ.png';
+import logoApp from '../../../static/logoApp.png';
 import loadComponent from '../../../utils/loadComponents';
 const TooltipIcon = loadComponent('TooltipIcon', 'TooltipIcon');
 
@@ -70,7 +70,7 @@ export default class Header extends React.Component {
             }}>
                 <Box sx={{display: 'flex', flexDirection: 'row'}}>
                     <>
-                        <img src={logoSTJ} alt="logoSTJ" style={{marginRight:'2rem', height: '64px', width: 'auto'}}/>
+                        <img src={logoApp} alt="logoApp" style={{marginRight:'2rem', height: '64px', width: 'auto'}}/>
                         <Button
                             className="link"
                             sx={{

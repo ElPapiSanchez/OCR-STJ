@@ -217,7 +217,7 @@ def task_make_changes(files_path, outputs_path, data):
         {
             "status": {
                 "stage": "exporting",
-                "message": "A gerar resultados",
+                "message": "generating results",
             }
         },
     )
@@ -262,7 +262,7 @@ def task_make_changes(files_path, outputs_path, data):
             {
                 "status": {
                     "stage": "exporting",
-                    "message": "A gerar texto",
+                    "message": "generating text",
                 }
             },
         )
@@ -281,7 +281,7 @@ def task_make_changes(files_path, outputs_path, data):
             {
                 "status": {
                     "stage": "exporting",
-                    "message": "A gerar texto delimitado",
+                    "message": "generating delimited text",
                 }
             },
         )
@@ -300,7 +300,7 @@ def task_make_changes(files_path, outputs_path, data):
             {
                 "status": {
                     "stage": "exporting",
-                    "message": "A gerar PDF com índice",
+                    "message": "generating pdf with index",
                 }
             },
         )
@@ -336,7 +336,7 @@ def task_make_changes(files_path, outputs_path, data):
             {
                 "status": {
                     "stage": "exporting",
-                    "message": "A gerar PDF",
+                    "message": "generating pdf",
                 }
             },
         )
@@ -373,7 +373,7 @@ def task_make_changes(files_path, outputs_path, data):
             {
                 "status": {
                     "stage": "exporting",
-                    "message": "A gerar CSV",
+                    "message": "generating csv",
                 }
             },
         )
@@ -586,7 +586,7 @@ def prepare_file_from_api(path: str, callback: Signature | None = None):
         data["ocr"]["exceptions"] = str(e)
         data["status"] = {
             "stage": "error",
-            "message": "Erro a preparar documento",
+            "message": "error preparing document",
         }
         update_json_file(data_folder, data)
         log.error(f"Error in preparing OCR for file at {path}: {e}")
@@ -789,7 +789,7 @@ def task_prepare_file_ocr(inputs_path: str = None, files_path: str = None, path:
         data["ocr"]["exceptions"] = str(e)
         data["status"] = {
             "stage": "error",
-            "message": "Erro a preparar documento",
+            "message": "error preparing document",
         }
         update_json_file(data_folder, data)
         log.error(f"❌ {basename}: File preparation failed with error: {e}")
@@ -827,7 +827,7 @@ def task_request_ner(files_path, outputs_path=None):
 
 
 @celery.task(name="process_folder_sequential")
-def task_process_folder_sequential(files_list: list, config: dict = None, is_private: bool = False, current_index: int = 0):
+def task_process_folder_sequential(files_list: list, config: dict = None, is_private: bool = False, current_index: int = 0, folder_id: str = None):
     """
     Process files in a folder sequentially to avoid memory exhaustion.
     Queues one file at a time. When complete, automatically queues the next file.
@@ -836,6 +836,7 @@ def task_process_folder_sequential(files_list: list, config: dict = None, is_pri
     :param config: OCR configuration to use
     :param is_private: Whether this is a private folder
     :param current_index: Current file index being processed
+    :param folder_id: Unique identifier for this folder operation
     """
     if current_index >= len(files_list):
         log.info(f"🎉 FOLDER OCR COMPLETE: All {len(files_list)} file(s) processed")
@@ -847,6 +848,16 @@ def task_process_folder_sequential(files_list: list, config: dict = None, is_pri
     # Only log folder progress for first file, every 3rd file, and last file to reduce spam
     if current_index == 0 or (current_index + 1) % 3 == 0 or current_index == len(files_list) - 1:
         log.info(f"🚀 Starting file {current_index + 1}/{len(files_list)}: {basename}")
+    
+    # Start folder completion monitor on first file
+    if current_index == 0 and folder_id:
+        log.info(f"📊 Starting folder completion monitor [folder_id: {folder_id}]")
+        celery.send_task(
+            "monitor_folder_completion",
+            kwargs={"folder_id": folder_id, "files_list": files_list},
+            countdown=20,
+            ignore_result=True
+        )
     
     try:
         data_path = f"{f_path}/_data.json"
@@ -874,7 +885,8 @@ def task_process_folder_sequential(files_list: list, config: dict = None, is_pri
                     "files_list": files_list,
                     "config": config,
                     "is_private": is_private,
-                    "current_index": current_index + 1
+                    "current_index": current_index + 1,
+                    "folder_id": folder_id
                 },
                 ignore_result=True
             )
@@ -918,7 +930,8 @@ def task_process_folder_sequential(files_list: list, config: dict = None, is_pri
                 "files_list": files_list,
                 "config": config,
                 "is_private": is_private,
-                "current_index": current_index
+                "current_index": current_index,
+                "folder_id": folder_id
             },
             countdown=10,
             ignore_result=True
@@ -934,7 +947,8 @@ def task_process_folder_sequential(files_list: list, config: dict = None, is_pri
                 "files_list": files_list,
                 "config": config,
                 "is_private": is_private,
-                "current_index": current_index + 1
+                "current_index": current_index + 1,
+                "folder_id": folder_id
             },
             ignore_result=True
         )
@@ -978,7 +992,7 @@ def task_reset_cancelled_document(files_path: str):
 
 
 @celery.task(name="monitor_file_completion")
-def task_monitor_file_completion(files_path: str, files_list: list, config: dict, is_private: bool, current_index: int):
+def task_monitor_file_completion(files_path: str, files_list: list, config: dict, is_private: bool, current_index: int, folder_id: str = None):
     """
     Monitor if a file has completed all OCR and export tasks.
     When complete, trigger the next file in the folder.
@@ -988,6 +1002,7 @@ def task_monitor_file_completion(files_path: str, files_list: list, config: dict
     :param config: OCR configuration
     :param is_private: whether this is a private folder
     :param current_index: index of file being monitored
+    :param folder_id: unique identifier for this folder operation
     """
     basename = get_file_basename(files_path)
     data_file = f"{files_path}/_data.json"
@@ -1005,7 +1020,8 @@ def task_monitor_file_completion(files_path: str, files_list: list, config: dict
                     "files_list": files_list,
                     "config": config,
                     "is_private": is_private,
-                    "current_index": current_index + 1
+                    "current_index": current_index + 1,
+                    "folder_id": folder_id
                 },
                 ignore_result=True
             )
@@ -1019,7 +1035,8 @@ def task_monitor_file_completion(files_path: str, files_list: list, config: dict
                     "files_list": files_list,
                     "config": config,
                     "is_private": is_private,
-                    "current_index": current_index + 1
+                    "current_index": current_index + 1,
+                    "folder_id": folder_id
                 },
                 ignore_result=True
             )
@@ -1045,7 +1062,8 @@ def task_monitor_file_completion(files_path: str, files_list: list, config: dict
                     "files_list": files_list,
                     "config": config,
                     "is_private": is_private,
-                    "current_index": current_index + 1
+                    "current_index": current_index + 1,
+                    "folder_id": folder_id
                 },
                 ignore_result=True
             )
@@ -1060,7 +1078,8 @@ def task_monitor_file_completion(files_path: str, files_list: list, config: dict
                     "files_list": files_list,
                     "config": config,
                     "is_private": is_private,
-                    "current_index": current_index
+                    "current_index": current_index,
+                    "folder_id": folder_id
                 },
                 countdown=10,
                 ignore_result=True
@@ -1075,11 +1094,126 @@ def task_monitor_file_completion(files_path: str, files_list: list, config: dict
                 "files_list": files_list,
                 "config": config,
                 "is_private": is_private,
-                "current_index": current_index + 1
+                "current_index": current_index + 1,
+                "folder_id": folder_id
             },
             ignore_result=True
         )
         return {"status": "monitor_error"}
+
+
+@celery.task(name="monitor_folder_completion")
+def task_monitor_folder_completion(folder_id: str, files_list: list):
+    """
+    Monitor when all files in a folder have completed.
+    When complete, remove from active_folders and start next queued folder.
+    
+    :param folder_id: Unique identifier for this folder operation
+    :param files_list: List of tuples (files_path, outputs_path) for each file in folder
+    """
+    from src.utils.system_settings import get_system_settings, update_system_setting
+    
+    log.info(f"🔍 Monitoring folder completion [folder_id: {folder_id}]")
+    
+    # Check if all files are complete
+    all_complete = True
+    completed_count = 0
+    error_count = 0
+    
+    for f_path, _ in files_list:
+        try:
+            data_path = f"{f_path}/_data.json"
+            data = get_data(data_path)
+            stage = data.get("status", {}).get("stage", "")
+            
+            if stage in ("post-ocr", "error", "removed_from_queue"):
+                completed_count += 1
+                if stage == "error":
+                    error_count += 1
+            else:
+                all_complete = False
+        except Exception as e:
+            log.warning(f"Could not check file status: {e}")
+            all_complete = False
+    
+    if not all_complete:
+        # Re-check in 15 seconds
+        log.info(f"📊 Folder progress: {completed_count}/{len(files_list)} files complete [folder_id: {folder_id}]")
+        celery.send_task(
+            "monitor_folder_completion",
+            kwargs={"folder_id": folder_id, "files_list": files_list},
+            countdown=15,
+            ignore_result=True
+        )
+        return {"status": "still_processing", "completed": completed_count, "total": len(files_list)}
+    
+    # Folder complete - remove from active and start next
+    log.info(f"✅ Folder complete: {completed_count}/{len(files_list)} files ({error_count} errors) [folder_id: {folder_id}]")
+    
+    from src.utils.system_settings import remove_active_folder, pop_next_queued_folder, add_finished_folder
+    
+    # Get folder path from first file (remove filename to get folder path)
+    folder_path = None
+    if files_list and len(files_list) > 0:
+        first_file_path = files_list[0][0]
+        # Get parent directory (folder containing the file)
+        import os
+        folder_path = os.path.dirname(first_file_path)
+    
+    # Atomically remove this folder from active_folders
+    remove_active_folder(folder_id)
+    
+    # Add to finished folders (will show for 2 minutes)
+    if folder_path:
+        add_finished_folder(folder_id, folder_path)
+        log.info(f"✓ Folder marked as finished [folder_id: {folder_id}, path: {folder_path}]")
+    
+    # Atomically pop next folder from queue (if any)
+    next_folder, settings = pop_next_queued_folder()
+    
+    if next_folder:
+        log.info(f"🚀 Starting next queued folder [folder_id: {next_folder['id']}, {len(next_folder['files_list'])} files]")
+        
+        # Add to active folders
+        active_folders = settings.get("active_folders", [])
+        active_folders.append({
+            "id": next_folder["id"],
+            "path": next_folder["path"],
+            "started_at": time.time()
+        })
+        update_system_setting("active_folders", active_folders)
+        
+        # Update files status from "folder queued" to "queued"
+        for idx, (f_path, _) in enumerate(next_folder['files_list'], 1):
+            data_path = f"{f_path}/_data.json"
+            try:
+                data = get_data(data_path)
+                data["status"] = {
+                    "stage": "queued",
+                    "message": "queued file",
+                    "message_current": idx,
+                    "message_total": len(next_folder['files_list']),
+                }
+                update_json_file(data_path, data)
+            except Exception as e:
+                log.error(f"Failed to update file status: {e}")
+        
+        # Start next folder processing
+        celery.send_task(
+            "process_folder_sequential",
+            kwargs={
+                "folder_id": next_folder["id"],
+                "files_list": next_folder["files_list"],
+                "config": next_folder["config"],
+                "is_private": next_folder["is_private"]
+            },
+            ignore_result=True
+        )
+    else:
+        active_count = len(settings.get("active_folders", []))
+        log.info(f"📭 No more folders in queue [active: {active_count}]")
+    
+    return {"status": "complete", "completed": completed_count, "errors": error_count}
 
 
 @celery.task(name="process_pages_in_batches")
@@ -1386,11 +1520,12 @@ def task_file_ocr(
         if not valid:
             data = get_data(data_file)
             data["ocr"].update(
-                {"progress": 0, "exceptions": {"Parâmetros inválidos:": errors}}
+                {"progress": 0, "exceptions": {"Invalid parameters:": errors}}
             )
             data["status"] = {
                 "stage": "error",
-                "message": f"Parâmetros inválidos: {errors}",
+                "message": "invalid parameters",
+                "message_details": str(errors),
             }
             update_json_file(data_file, data)
             log.error(
@@ -1502,7 +1637,7 @@ def task_file_ocr(
         data["ocr"]["exceptions"] = str(e)
         data["status"] = {
             "stage": "error",
-            "message": "Erro durante OCR",
+            "message": "error during ocr",
         }
         update_json_file(data_file, data)
         log.error(f"❌ {basename}: task_file_ocr failed with error: {e}")
@@ -2150,10 +2285,12 @@ def task_page_ocr(
                 traceback.print_exc()
                 # Mark this page as failed so the document can be retried
                 data = get_data(data_file)
+                page_num_display = int(get_file_basename(filename).split('_')[-1]) + 1
                 data["ocr"]["exceptions"] = f"Erro na página {filename}: {str(e)}"
                 data["status"] = {
                     "stage": "error",
-                    "message": f"Erro durante OCR da página {int(get_file_basename(filename).split('_')[-1]) + 1}",
+                    "message": "error during ocr page",
+                    "message_page": page_num_display,
                 }
                 update_json_file(data_file, data)
                 return {"status": "error"}
@@ -2215,10 +2352,12 @@ def task_page_ocr(
                 traceback.print_exc()
                 # Mark this page as failed so the document can be retried
                 data = get_data(data_file)
+                page_num_display = int(get_file_basename(filename).split('_')[-1]) + 1
                 data["ocr"]["exceptions"] = f"Erro na página {filename}: {str(e)}"
                 data["status"] = {
                     "stage": "error",
-                    "message": f"Erro durante OCR da página {int(get_file_basename(filename).split('_')[-1]) + 1}",
+                    "message": "error during ocr page",
+                    "message_page": page_num_display,
                 }
                 update_json_file(data_file, data)
                 return {"status": "error"}
@@ -2252,7 +2391,9 @@ def task_page_ocr(
         if data["status"]["stage"] != "error":
             data["status"] = {
                 "stage": "ocr",
-                "message": f"A processar OCR - Página {pages_done}/{n_doc_pages}",
+                "message": "processing ocr page",
+                "message_current": pages_done,
+                "message_total": n_doc_pages,
                 "percentage": ocr_percentage,
             }
         update_json_file(data_file, data)
@@ -2268,9 +2409,11 @@ def task_page_ocr(
         
         data = get_data(data_file)
         data["ocr"]["exceptions"] = str(e)
+        page_num_display = int(get_file_basename(filename).split('_')[-1]) + 1
         data["status"] = {
             "stage": "error",
-            "message": f"Erro durante OCR da página {int(get_file_basename(filename).split('_')[-1]) + 1}",
+            "message": "error during ocr page",
+            "message_page": page_num_display,
         }
         update_json_file(data_file, data)
         log.error(f"Error in performing a page's OCR for file at {path}: {e}")
@@ -2346,7 +2489,7 @@ def task_export_results(files_path: str = None, outputs_path: str = None, output
         {
             "status": {
                 "stage": "exporting",
-                "message": "A gerar resultados",
+                "message": "generating results",
             }
         },
     )
@@ -2363,7 +2506,7 @@ def task_export_results(files_path: str = None, outputs_path: str = None, output
                 {
                     "status": {
                         "stage": "exporting",
-                        "message": "A gerar texto",
+                        "message": "generating text",
                     }
                 },
             )
@@ -2382,7 +2525,7 @@ def task_export_results(files_path: str = None, outputs_path: str = None, output
                 {
                     "status": {
                         "stage": "exporting",
-                        "message": "A gerar texto delimitado",
+                        "message": "generating delimited text",
                     }
                 },
             )
@@ -2403,7 +2546,7 @@ def task_export_results(files_path: str = None, outputs_path: str = None, output
                 {
                     "status": {
                         "stage": "exporting",
-                        "message": "A gerar imagens",
+                        "message": "generating images",
                     }
                 },
             )
@@ -2422,7 +2565,7 @@ def task_export_results(files_path: str = None, outputs_path: str = None, output
                 {
                     "status": {
                         "stage": "exporting",
-                        "message": "A gerar PDF com índice",
+                        "message": "generating pdf with index",
                     }
                 },
             )
@@ -2467,7 +2610,7 @@ def task_export_results(files_path: str = None, outputs_path: str = None, output
                 {
                     "status": {
                         "stage": "exporting",
-                        "message": "A gerar PDF",
+                        "message": "generating pdf",
                     }
                 },
             )
@@ -2506,7 +2649,7 @@ def task_export_results(files_path: str = None, outputs_path: str = None, output
                 {
                     "status": {
                         "stage": "exporting",
-                        "message": "A gerar CSV",
+                        "message": "generating csv",
                     }
                 },
             )
@@ -2549,7 +2692,7 @@ def task_export_results(files_path: str = None, outputs_path: str = None, output
                 {
                     "status": {
                         "stage": "exporting",
-                        "message": "A gerar hOCR",
+                        "message": "generating hocr",
                     }
                 },
             )
@@ -2569,7 +2712,7 @@ def task_export_results(files_path: str = None, outputs_path: str = None, output
                 {
                     "status": {
                         "stage": "exporting",
-                        "message": "A gerar ALTO XML",
+                        "message": "generating alto xml",
                     }
                 },
             )
@@ -2609,7 +2752,7 @@ def task_export_results(files_path: str = None, outputs_path: str = None, output
         data["ocr"]["exceptions"] = str(e)
         data["status"] = {
             "stage": "error",
-            "message": "Erro a gerar resultados",
+            "message": "error generating results",
         }
         update_json_file(data_file, data)
         log.error(f"Error in exporting results for file at {files_path}: {e}")
@@ -2660,7 +2803,7 @@ def task_reset_stuck_ocr():
                             # Reset status to error so user can retry
                             data["status"] = {
                                 "stage": "error",
-                                "message": "OCR interrompido - pode tentar novamente",
+                                "message": "ocr interrupted retry",
                             }
                             
                             # Reset OCR progress

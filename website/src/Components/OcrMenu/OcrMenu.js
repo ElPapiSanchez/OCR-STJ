@@ -389,7 +389,7 @@ class OcrMenu extends React.Component {
         <>
             <Notification message={""} severity={"success"} ref={this.successNot}/>
             <Notification message={""} severity={"error"} ref={this.errorNot}/>
-            <ConfirmLeave leaveFunc={this.leave} ref={this.confirmLeave} />
+            <ConfirmLeave leaveFunc={this.leave} saveAndLeaveFunc={() => this.saveConfig(true)} ref={this.confirmLeave} />
 
             <Box className="toolbar">
                 <Box className="noMarginRight" sx={{display: "flex"}}>

@@ -7,7 +7,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import { useTranslation } from 'react-i18next';
 import QueueMonitor from '../QueueMonitor/QueueMonitor';
 import { MODEL, STJ } from '../../App';
-import logoSTJ from "static/logoSTJ.svg";
+import logoApp from "static/logoApp.png";
 import logoUN from "static/Logo_of_the_United_Nations.svg";
 
 const QueueStatusPage = () => {
@@ -44,7 +44,7 @@ const QueueStatusPage = () => {
                 }}>
                     <Box sx={{display: "flex", alignItems: "center", gap: "var(--spacing-md)"}}>
                         <img
-                            src={MODEL === STJ ? logoSTJ : logoUN}
+                            src={MODEL === STJ ? logoApp : logoUN}
                             alt={MODEL === STJ ? "Logótipo do STJ" : "Logótipo da UN"}
                             style={{
                                 maxHeight: "45px",
