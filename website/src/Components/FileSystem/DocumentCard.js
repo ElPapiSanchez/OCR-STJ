@@ -198,8 +198,8 @@ class DocumentCard extends React.Component {
             return badges;
         }
 
-        // Waiting/queued stage
-        if (status?.stage === "waiting") {
+        // Waiting/queued stage - only show if OCR has been requested
+        if (status?.stage === "waiting" && (ocrInfo || stored === false)) {
             badges.push(
                 <Box key="waiting" className="status-badge info" sx={{ position: 'absolute', top: 'var(--spacing-sm)', left: 'var(--spacing-sm)' }}>
                     <CircularProgress size={12} sx={{ mr: '4px' }} />
