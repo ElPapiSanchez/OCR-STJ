@@ -456,11 +456,11 @@ class DocumentRow extends React.Component {
                             </IconButton>
                             <span>{this.props.name}</span>
                             {usingCustomConfig && (
-                                <TuneIcon 
+                                <SettingsSuggestIcon 
                                     sx={{ 
                                         fontSize: '1rem', 
                                         ml: '0.5rem', 
-                                        color: '#2196f3',
+                                        color: 'var(--accent-primary)',
                                         flexShrink: 0 
                                     }} 
                                     titleAccess={this.props.t("custom config")}

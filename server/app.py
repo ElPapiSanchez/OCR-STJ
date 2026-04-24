@@ -1371,13 +1371,16 @@ def request_ocr():
             
             log.info(f"➕ FOLDER OCR: Added to active_folders [folder_id: {folder_id}, active_count_after: {len(active_folders)}]")
             
+            # For "respect_individual" strategy, pass None so each file uses its own config
+            task_config = None if config_strategy == "respect_individual" else config
+            
             # Queue sequential processing via new task
             celery.send_task(
                 "process_folder_sequential",
                 kwargs={
                     "folder_id": folder_id,
                     "files_list": files_list,
-                    "config": config,
+                    "config": task_config,
                     "is_private": is_private
                 },
                 ignore_result=True
@@ -1386,12 +1389,15 @@ def request_ocr():
             log.info(f"✅ FOLDER OCR: Sequential processing started for {len(files_list)} file(s) [folder_id: {folder_id}]")
         else:
             # Queue for later
+            # For "respect_individual" strategy, pass None so each file uses its own config
+            task_config = None if config_strategy == "respect_individual" else config
+            
             queued_folders = settings.get("queued_folders", [])
             queued_folders.append({
                 "id": folder_id,
                 "path": files_path,
                 "files_list": files_list,
-                "config": config,
+                "config": task_config,
                 "is_private": is_private,
                 "queued_at": time.time()
             })
@@ -2655,6 +2661,223 @@ def cancel_ocr():
         
     except Exception as e:
         log.error(f"Error cancelling OCR: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route("/cancel-folder-ocr", methods=["POST"])
+def cancel_folder_ocr():
+    """
+    Cancel OCR processing for an entire folder and all its documents.
+    Expects JSON body with 'files_path' parameter (folder path).
+    """
+    import logging as log
+    
+    try:
+        data = request.get_json()
+        files_path = data.get("files_path")
+        
+        if not files_path:
+            return jsonify({
+                'success': False,
+                'error': 'files_path is required'
+            }), 400
+        
+        # Convert relative path to absolute if needed
+        if not files_path.startswith(FILES_PATH):
+            files_path = os.path.join(FILES_PATH, files_path.strip("/"))
+        
+        folder_data_file = os.path.join(files_path, "_data.json")
+        
+        if not os.path.exists(folder_data_file):
+            return jsonify({
+                'success': False,
+                'error': 'Folder not found'
+            }), 404
+        
+        folder_data = get_data(folder_data_file)
+        
+        # Verify this is a folder
+        if folder_data.get("type") != "folder":
+            return jsonify({
+                'success': False,
+                'error': 'Path is not a folder'
+            }), 400
+        
+        basename = get_file_basename(files_path)
+        log.warning(f"🚫 CANCEL FOLDER REQUEST received for {basename}")
+        
+        # Find all documents in the folder (they're stored directly in the folder, not in _files subdir)
+        documents = []
+        if os.path.exists(files_path):
+            for item in os.listdir(files_path):
+                item_path = os.path.join(files_path, item)
+                # Skip system files and check only directories
+                if os.path.isdir(item_path) and not item.startswith("_"):
+                    item_data_file = os.path.join(item_path, "_data.json")
+                    if os.path.exists(item_data_file):
+                        try:
+                            item_data = get_data(item_data_file)
+                            if item_data.get("type") == "file":
+                                documents.append((item_path, item_data_file, item_data))
+                        except:
+                            pass
+        
+        log.warning(f"🚫 {basename}: Found {len(documents)} document(s) to cancel")
+        
+        # Cancel each document
+        cancelled_count = 0
+        for doc_path, doc_data_file, doc_data in documents:
+            try:
+                doc_basename = get_file_basename(doc_path)
+                current_stage = doc_data.get("status", {}).get("stage", "")
+                
+                # Cancel if it's currently being processed, queued, waiting, or exporting
+                if current_stage in ("ocr", "queued", "export", "waiting", "compressing"):
+                    log.warning(f"🚫 {doc_basename}: Cancelling (stage: {current_stage})")
+                    
+                    # Clear OCR results
+                    ocr_results_path = os.path.join(doc_path, "_ocr_results")
+                    if os.path.exists(ocr_results_path):
+                        shutil.rmtree(ocr_results_path, ignore_errors=True)
+                        os.makedirs(ocr_results_path, exist_ok=True)
+                    
+                    # Clear outputs
+                    outputs_path = doc_path.replace("_files", "_outputs")
+                    if os.path.exists(outputs_path):
+                        for item in os.listdir(outputs_path):
+                            item_path = os.path.join(outputs_path, item)
+                            if os.path.isfile(item_path):
+                                try:
+                                    os.remove(item_path)
+                                except:
+                                    pass
+                    
+                    # Set to cancelled
+                    doc_data["status"] = {
+                        "stage": "cancelled",
+                        "message": "Cancelado pelo utilizador (pasta cancelada)",
+                    }
+                    if "percentage" in doc_data.get("status", {}):
+                        del doc_data["status"]["percentage"]
+                    
+                    update_json_file(doc_data_file, doc_data)
+                    cancelled_count += 1
+                else:
+                    log.warning(f"🚫 {doc_basename}: Skipping (stage: {current_stage}, not cancellable)")
+            except Exception as e:
+                log.error(f"🚫 Error cancelling document {doc_basename}: {e}")
+        
+        log.warning(f"🚫 {basename}: Cancelled {cancelled_count} document(s)")
+        
+        # Remove folder from active_folders and queued_folders
+        from src.utils.system_settings import get_system_settings, update_system_setting, remove_active_folder
+        
+        try:
+            settings = get_system_settings()
+            
+            # Remove from active folders
+            active_folders = settings.get("active_folders", [])
+            removed_from_active = False
+            for folder_entry in active_folders[:]:
+                if folder_entry.get("path") == files_path or folder_entry.get("path") == files_path.replace(FILES_PATH + "/", ""):
+                    folder_id = folder_entry.get("id")
+                    remove_active_folder(folder_id)
+                    removed_from_active = True
+                    log.warning(f"🚫 {basename}: Removed from active_folders [folder_id: {folder_id}]")
+                    break
+            
+            # Remove from queued folders
+            queued_folders = settings.get("queued_folders", [])
+            new_queued = []
+            removed_from_queue = False
+            for folder_entry in queued_folders:
+                if folder_entry.get("path") == files_path or folder_entry.get("path") == files_path.replace(FILES_PATH + "/", ""):
+                    removed_from_queue = True
+                    log.warning(f"🚫 {basename}: Removed from queued_folders")
+                else:
+                    new_queued.append(folder_entry)
+            
+            if removed_from_queue:
+                update_system_setting("queued_folders", new_queued)
+            
+            # Revoke all Celery tasks for this folder
+            log.warning(f"🚫 {basename}: Revoking Celery tasks...")
+            revoked_count = 0
+            folder_id_to_check = None
+            
+            # Store folder_id if we found it
+            if removed_from_active:
+                # folder_id was set in the loop above
+                folder_id_to_check = folder_id
+            
+            try:
+                from celery import current_app
+                inspect = current_app.control.inspect()
+                
+                # Get all active, reserved, and scheduled tasks
+                active_tasks = inspect.active()
+                reserved_tasks = inspect.reserved()
+                scheduled_tasks = inspect.scheduled()
+                
+                log.warning(f"🚫 {basename}: Checking active={active_tasks is not None}, reserved={reserved_tasks is not None}, scheduled={scheduled_tasks is not None}")
+                
+                # Collect task IDs that match this folder
+                tasks_to_revoke = []
+                
+                for task_dict in [active_tasks, reserved_tasks, scheduled_tasks]:
+                    if task_dict:
+                        for worker_name, tasks in task_dict.items():
+                            for task in tasks:
+                                task_kwargs = task.get('kwargs', {})
+                                task_name = task.get('name', '')
+                                
+                                # Check if task belongs to this folder or any of its documents
+                                task_files_path = task_kwargs.get('files_path', '')
+                                task_folder_id = task_kwargs.get('folder_id', '')
+                                
+                                # Match by:
+                                # 1. files_path starts with folder path (any document in folder)
+                                # 2. folder_id matches
+                                # 3. Task name is a folder coordination task (monitor, sequential)
+                                should_revoke = False
+                                if task_files_path and task_files_path.startswith(files_path):
+                                    should_revoke = True
+                                    log.warning(f"🚫 {basename}: Task matches by path: {task_name}")
+                                elif task_folder_id and folder_id_to_check and task_folder_id == folder_id_to_check:
+                                    should_revoke = True
+                                    log.warning(f"🚫 {basename}: Task matches by folder_id: {task_name}")
+                                
+                                if should_revoke:
+                                    tasks_to_revoke.append(task['id'])
+                                    log.warning(f"🚫 {basename}: Marking task for revocation: {task_name} (ID: {task['id'][:8]}...)")
+                
+                # Revoke all matching tasks
+                if tasks_to_revoke:
+                    for task_id in tasks_to_revoke:
+                        current_app.control.revoke(task_id, terminate=True, signal='SIGKILL')
+                        revoked_count += 1
+                    log.warning(f"🚫 {basename}: Revoked {revoked_count} Celery task(s)")
+                else:
+                    log.warning(f"🚫 {basename}: No matching tasks found to revoke")
+                    
+            except Exception as revoke_error:
+                log.warning(f"🚫 {basename}: Error revoking tasks: {revoke_error}")
+            
+        except Exception as e:
+            log.error(f"🚫 {basename}: Error managing folder queue: {e}")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Folder OCR cancelled successfully',
+            'cancelled_documents': cancelled_count,
+            'revoked_tasks': revoked_count
+        })
+        
+    except Exception as e:
+        log.error(f"Error cancelling folder OCR: {e}")
         return jsonify({
             'success': False,
             'error': str(e)

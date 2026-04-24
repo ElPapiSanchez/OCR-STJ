@@ -659,69 +659,72 @@ class OcrMenu extends React.Component {
                     >
                         {this.props.t("more outputs")}
                     </Button>
-                    {/* Compression Settings */}
-                    <FormControl className="simpleDropdown borderTop" sx={{ paddingTop: '1rem', mt: 2 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                            <FormControlLabel
-                                control={
-                                    <Switch
-                                        checked={this.state.compress !== undefined ? this.state.compress : true}
-                                        onChange={(e) => this.changeCompress(e.target.checked)}
-                                        color="primary"
-                                    />
-                                }
-                                label={this.props.t("compress pdf")}
-                            />
-                            <InfoTooltip title={this.props.t("ocr_help.compress_pdf")} />
-                        </Box>
-                        <Typography variant="caption" color="text.secondary" sx={{ ml: 2, mt: 0.5 }}>
-                            {this.props.t("compress pdf description")}
-                        </Typography>
-                        
-                        {/* Compression Settings */}
-                        {(this.state.compress !== undefined ? this.state.compress : true) && (
-                            <Box sx={{ mt: 2, ml: 2 }}>
-                                <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
-                                    {this.props.t('compression settings')}
-                                </Typography>
-
-                                {/* Target DPI */}
-                                <TextField
-                                    label={this.props.t('compression target dpi')}
-                                    type="number"
-                                    size="small"
-                                    fullWidth
-                                    value={this.state.compressionTargetDpi}
-                                    onChange={(e) => this.setState({ compressionTargetDpi: e.target.value, usingDefault: false, uncommittedChanges: true })}
-                                    inputProps={{ min: 50, max: 300 }}
-                                    sx={{ mb: 1.5 }}
+                    
+                    {/* Compression Settings - Only show if PDF output is selected */}
+                    {(this.state.outputs.includes('pdf') || this.state.outputs.includes('pdf_indexed')) && (
+                        <FormControl className="simpleDropdown borderTop" sx={{ paddingTop: '1rem', mt: 2 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                <FormControlLabel
+                                    control={
+                                        <Switch
+                                            checked={this.state.compress !== undefined ? this.state.compress : true}
+                                            onChange={(e) => this.changeCompress(e.target.checked)}
+                                            color="primary"
+                                        />
+                                    }
+                                    label={this.props.t("compress pdf")}
                                 />
-
-                                {/* Background Quality */}
-                                <TextField
-                                    label={this.props.t('compression bg quality')}
-                                    type="number"
-                                    size="small"
-                                    fullWidth
-                                    value={this.state.compressionBgQuality}
-                                    onChange={(e) => this.setState({ compressionBgQuality: e.target.value, usingDefault: false, uncommittedChanges: true })}
-                                    inputProps={{ min: 1, max: 100 }}
-                                    sx={{ mb: 1.5 }}
-                                />
-
-                                {/* Foreground Quality */}
-                                <TextField
-                                    label={this.props.t('compression fg quality')}
-                                    type="number"
-                                    size="small"
-                                    fullWidth
-                                    value={this.state.compressionFgQuality}
-                                    onChange={(e) => this.setState({ compressionFgQuality: e.target.value, usingDefault: false, uncommittedChanges: true })}
-                                    inputProps={{ min: 1, max: 100 }}
-                                />
+                                <InfoTooltip title={this.props.t("ocr_help.compress_pdf")} />
                             </Box>
-                        )}
-                    </FormControl>
+                            <Typography variant="caption" color="text.secondary" sx={{ ml: 2, mt: 0.5 }}>
+                                {this.props.t("compress pdf description")}
+                            </Typography>
+                            
+                            {/* Compression Settings */}
+                            {(this.state.compress !== undefined ? this.state.compress : true) && (
+                                <Box sx={{ mt: 2, ml: 2 }}>
+                                    <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                                        {this.props.t('compression settings')}
+                                    </Typography>
+
+                                    {/* Target DPI */}
+                                    <TextField
+                                        label={this.props.t('compression target dpi')}
+                                        type="number"
+                                        size="small"
+                                        fullWidth
+                                        value={this.state.compressionTargetDpi}
+                                        onChange={(e) => this.setState({ compressionTargetDpi: e.target.value, usingDefault: false, uncommittedChanges: true })}
+                                        inputProps={{ min: 50, max: 300 }}
+                                        sx={{ mb: 1.5 }}
+                                    />
+
+                                    {/* Background Quality */}
+                                    <TextField
+                                        label={this.props.t('compression bg quality')}
+                                        type="number"
+                                        size="small"
+                                        fullWidth
+                                        value={this.state.compressionBgQuality}
+                                        onChange={(e) => this.setState({ compressionBgQuality: e.target.value, usingDefault: false, uncommittedChanges: true })}
+                                        inputProps={{ min: 1, max: 100 }}
+                                        sx={{ mb: 1.5 }}
+                                    />
+
+                                    {/* Foreground Quality */}
+                                    <TextField
+                                        label={this.props.t('compression fg quality')}
+                                        type="number"
+                                        size="small"
+                                        fullWidth
+                                        value={this.state.compressionFgQuality}
+                                        onChange={(e) => this.setState({ compressionFgQuality: e.target.value, usingDefault: false, uncommittedChanges: true })}
+                                        inputProps={{ min: 1, max: 100 }}
+                                    />
+                                </Box>
+                            )}
+                        </FormControl>
+                    )}
                 </Box>
 
                 {/*
@@ -881,6 +884,7 @@ class OcrMenu extends React.Component {
                                             uncommittedChanges: true
                                         })}
                                         size="small"
+                                                sx={{ minWidth: '200px' }}
                                                 inputProps={{ min: 1, max: 10, step: 0.1 }}
                                                 disabled={!this.state.preprocessing?.enabled}
                                             />
@@ -894,6 +898,7 @@ class OcrMenu extends React.Component {
                                             uncommittedChanges: true
                                         })}
                                         size="small"
+                                                sx={{ minWidth: '200px' }}
                                                 inputProps={{ min: 4, max: 32, step: 1 }}
                                                 disabled={!this.state.preprocessing?.enabled}
                                             />
@@ -918,7 +923,7 @@ class OcrMenu extends React.Component {
                                     />
                                     {this.state.preprocessing?.median_blur && (
                                         <TextField
-                                            sx={{ ml: 4 }}
+                                            sx={{ ml: 4, minWidth: '250px' }}
                                             label={this.props.t("preprocessing.median_blur_kernel")}
                                             type="number"
                                             value={this.state.preprocessing?.median_blur_kernel ?? 3}
@@ -933,6 +938,21 @@ class OcrMenu extends React.Component {
                                         />
                                     )}
                                 </Box>
+
+                                <FormControlLabel
+                                    control={
+                                        <Switch
+                                            checked={this.state.preprocessing?.deskew ?? true}
+                                            onChange={(e) => this.setState({
+                                                preprocessing: { ...this.state.preprocessing, deskew: e.target.checked },
+                                                    usingDefault: false,
+                                                uncommittedChanges: true
+                                            })}
+                                            disabled={!this.state.preprocessing?.enabled}
+                                        />
+                                    }
+                                    label={this.props.t("preprocessing.deskew")}
+                                />
 
                                 <Box>
                                     <FormControl fullWidth size="small">
@@ -965,6 +985,7 @@ class OcrMenu extends React.Component {
                                                     uncommittedChanges: true
                                                 })}
                                                 size="small"
+                                                sx={{ minWidth: '200px' }}
                                                 inputProps={{ min: 3, max: 99, step: 2 }}
                                                 disabled={!this.state.preprocessing?.enabled}
                                             />
@@ -978,6 +999,7 @@ class OcrMenu extends React.Component {
                                                     uncommittedChanges: true
                                                 })}
                                                 size="small"
+                                                sx={{ minWidth: '200px' }}
                                                 inputProps={{ min: 0, max: 20, step: 1 }}
                                                 disabled={!this.state.preprocessing?.enabled}
                                             />
@@ -1017,7 +1039,7 @@ class OcrMenu extends React.Component {
                                     />
                                     {(this.state.preprocessing?.morphological_opening || this.state.preprocessing?.morphological_closing) && (
                                         <TextField
-                                            sx={{ ml: 4 }}
+                                            sx={{ ml: 4, minWidth: '250px' }}
                                             label={this.props.t("preprocessing.morph_kernel_size")}
                                             type="number"
                                             value={this.state.preprocessing?.morph_kernel_size ?? 3}
@@ -1032,21 +1054,6 @@ class OcrMenu extends React.Component {
                                         />
                                     )}
                                 </Box>
-
-                                <FormControlLabel
-                                    control={
-                                        <Switch
-                                            checked={this.state.preprocessing?.deskew ?? true}
-                                            onChange={(e) => this.setState({
-                                                preprocessing: { ...this.state.preprocessing, deskew: e.target.checked },
-                                                    usingDefault: false,
-                                                uncommittedChanges: true
-                                            })}
-                                            disabled={!this.state.preprocessing?.enabled}
-                                        />
-                                    }
-                                    label={this.props.t("preprocessing.deskew")}
-                                />
                             </Box>
                         </Box>
                     </Box>

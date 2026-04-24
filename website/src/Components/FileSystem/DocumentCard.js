@@ -263,28 +263,22 @@ class DocumentCard extends React.Component {
             );
         }
 
-        // Custom OCR config indicator (bottom-left)
+        // Custom OCR config indicator (top-left)
         if (usingCustomConfig && stored === true) {
             badges.push(
                 <Tooltip key="custom-config" title={this.props.t("custom config")} placement="top">
-                    <Box 
-                        sx={{ 
-                            position: 'absolute', 
-                            bottom: 'var(--spacing-sm)', 
+                    <SettingsSuggestIcon
+                        sx={{
+                            position: 'absolute',
+                            top: 'var(--spacing-sm)',
                             left: 'var(--spacing-sm)',
-                            backgroundColor: '#2196f3',
+                            fontSize: '1.5rem',
+                            color: 'var(--accent-primary)',
+                            background: 'rgba(255, 255, 255, 0.9)',
                             borderRadius: '50%',
-                            width: '32px',
-                            height: '32px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                            opacity: 1,
+                            padding: '4px'
                         }}
-                    >
-                        <TuneIcon sx={{ fontSize: '1rem', color: 'white', opacity: 1 }} />
-                    </Box>
+                    />
                 </Tooltip>
             );
         }

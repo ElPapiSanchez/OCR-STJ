@@ -241,7 +241,7 @@ class OcrPopup extends React.Component {
                                 </FormControl>
                             )}
 
-                            {this.state.isFolder && !hasCustomConfig && (
+                            {this.state.isFolder && (
                                 <FormControl component="fieldset" sx={{ mb: 3, width: '100%' }}>
                                     <FormLabel component="legend">{i18next.t("config strategy")}</FormLabel>
                                     <RadioGroup

@@ -12,6 +12,7 @@ import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
 import SettingsIcon from '@mui/icons-material/Settings';
 import SettingsSuggestIcon from '@mui/icons-material/SettingsSuggest';
 import TuneIcon from '@mui/icons-material/Tune';
+import CancelIcon from '@mui/icons-material/Cancel';
 
 import Menu from "@mui/material/Menu";
 import MenuItem from "@mui/material/MenuItem";
@@ -104,6 +105,11 @@ class FolderRow extends React.Component {
         this.props.configureOCR(this.props.name, true, false, customConfig);
     }
 
+    cancelFolderOCR(e) {
+        e.stopPropagation();
+        this.props.cancelFolderOCR(this.props.name);
+    }
+
     delete(e) {
         e.stopPropagation();
         this.props.deleteItem(this.props.name);
@@ -171,6 +177,17 @@ class FolderRow extends React.Component {
                     &nbsp;{usingCustomConfig ? this.props.t("alter existing config") : this.props.t("config ocr")}
                 </MenuItem>
 
+                {this.state.info?.["queue_status"]?.state === "active" && (
+                    <MenuItem
+                        onClick={(e) => this.cancelFolderOCR(e)}
+                    >
+                        <IconButton className="negActionButton">
+                            <CancelIcon />
+                        </IconButton>
+                        &nbsp;{this.props.t("cancel ocr")}
+                    </MenuItem>
+                )}
+
                 <MenuItem
                     onClick={(e) => this.delete(e)}
                 >
@@ -210,11 +227,11 @@ class FolderRow extends React.Component {
                         <FolderOpenRoundedIcon color="success" sx={{ p: 0, fontSize: 30, mr: '0.5rem' }} />
                         <span>{this.props.name}</span>
                         {usingCustomConfig && (
-                            <TuneIcon 
+                            <SettingsSuggestIcon 
                                 sx={{ 
                                     fontSize: '1rem', 
                                     ml: '0.5rem', 
-                                    color: '#2196f3',
+                                    color: 'var(--accent-primary)',
                                     flexShrink: 0 
                                 }} 
                                 titleAccess={this.props.t("custom config")}
@@ -243,49 +260,68 @@ class FolderRow extends React.Component {
                     </span>
                 </TableCell>
 
-                <TableCell className="explorerCell stateCell" align='center'>
-                    {(() => {
-                        const queueStatus = this.state.info?.["queue_status"];
-                        if (!queueStatus) {
-                            return "—";
-                        }
-                        
-                        if (queueStatus.state === "active") {
-                            const duration = queueStatus.duration_seconds || 0;
-                            const minutes = Math.floor(duration / 60);
-                            const seconds = duration % 60;
-                            return (
-                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
-                                    <CircularProgress size={16} thickness={4} />
-                                    <span style={{ color: 'var(--success-color)', fontWeight: 500 }}>
+                {(() => {
+                    const queueStatus = this.state.info?.["queue_status"];
+                    
+                    if (!queueStatus) {
+                        return (
+                            <TableCell className="explorerCell stateCell" align='left'>
+                                <Box className="stateBox">
+                                    <span>—</span>
+                                </Box>
+                            </TableCell>
+                        );
+                    }
+                    
+                    if (queueStatus.state === "active") {
+                        const duration = queueStatus.duration_seconds || 0;
+                        const minutes = Math.floor(duration / 60);
+                        const seconds = duration % 60;
+                        return (
+                            <TableCell className="explorerCell stateCell infoCell" align='left'>
+                                <Box className="stateBox">
+                                    <CircularProgress size={16} thickness={4} sx={{ml: '1rem', mr: '1rem', flexShrink: "0"}} />
+                                    <span>
                                         {this.props.t("queue.processing")}
                                     </span>
                                 </Box>
-                            );
-                        }
-                        
-                        if (queueStatus.state === "queued") {
-                            const position = queueStatus.position || 0;
-                            return (
-                                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                                    <span style={{ color: 'var(--warning-color)', fontWeight: 500 }}>
+                            </TableCell>
+                        );
+                    }
+                    
+                    if (queueStatus.state === "queued") {
+                        const position = queueStatus.position || 0;
+                        return (
+                            <TableCell className="explorerCell stateCell warningCell" align='left'>
+                                <Box className="stateBox">
+                                    <span>
                                         {this.props.t("queue.pending")} (#{position})
                                     </span>
                                 </Box>
-                            );
-                        }
-                        
-                        if (queueStatus.state === "finished") {
-                            return (
-                                <span style={{ color: 'var(--success-color)', fontWeight: 500 }}>
-                                    ✓ {this.props.t("queue.finished")}
-                                </span>
-                            );
-                        }
-                        
-                        return "—";
-                    })()}
-                </TableCell>
+                            </TableCell>
+                        );
+                    }
+                    
+                    if (queueStatus.state === "finished") {
+                        return (
+                            <TableCell className="explorerCell stateCell successCell" align='left'>
+                                <Box className="stateBox">
+                                    <span style={{ marginLeft: '0.5rem' }}>
+                                        ✓ {this.props.t("queue.finished")}
+                                    </span>
+                                </Box>
+                            </TableCell>
+                        );
+                    }
+                    
+                    return (
+                        <TableCell className="explorerCell stateCell" align='left'>
+                            <Box className="stateBox">
+                                <span>—</span>
+                            </Box>
+                        </TableCell>
+                    );
+                })()}
             </TableRow>
         </>)
     }
@@ -298,6 +334,7 @@ FolderRow.defaultProps = {
     enterFolder: null,
     performOCR: null,
     configureOCR: null,
+    cancelFolderOCR: null,
     deleteItem: null
 }
 

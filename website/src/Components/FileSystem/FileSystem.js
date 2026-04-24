@@ -129,6 +129,7 @@ class FileExplorer extends React.Component {
         this.editText = this.editText.bind(this);
         this.performOCR = this.performOCR.bind(this);
         this.cancelOCR = this.cancelOCR.bind(this);
+        this.cancelFolderOCR = this.cancelFolderOCR.bind(this);
         this.configureOCR = this.configureOCR.bind(this);
         this.indexFile = this.indexFile.bind(this);
         this.removeIndexFile = this.removeIndexFile.bind(this);
@@ -509,6 +510,35 @@ class FileExplorer extends React.Component {
             })
             .catch(err => {
                 console.error('🚫 Error cancelling OCR:', err);
+                console.error('🚫 Error details:', err.response);
+                this.errorNot.current.openNotif(this.props.t('error canceling ocr'));
+            });
+    }
+
+    cancelFolderOCR(foldername) {
+        console.log('🚫 cancelFolderOCR called with foldername:', foldername);
+        
+        let path = this.props.current_folder;
+        if (this.props._private) { path = this.props.spaceId + '/' + path }
+        
+        const files_path = path ? `${path}/${foldername}` : foldername;
+        
+        console.log('🚫 Sending cancel folder request with files_path:', files_path);
+        console.log('🚫 API URL:', API_URL);
+        
+        axios.post(`${API_URL}/cancel-folder-ocr`, { files_path })
+            .then(response => {
+                console.log('🚫 Cancel folder response:', response.data);
+                if (response.data.success) {
+                    const message = `${this.props.t('ocr cancelled')} (${response.data.cancelled_documents} ${this.props.t('document')}(s))`;
+                    this.successNot.current.openNotif(message);
+                    this.fetchFiles();
+                } else {
+                    this.errorNot.current.openNotif(this.props.t('error') + ': ' + response.data.error);
+                }
+            })
+            .catch(err => {
+                console.error('🚫 Error cancelling folder OCR:', err);
                 console.error('🚫 Error details:', err.response);
                 this.errorNot.current.openNotif(this.props.t('error canceling ocr'));
             });
@@ -1115,6 +1145,7 @@ class FileExplorer extends React.Component {
             } else {
                 const folderProps = {
                     ...commonProps,
+                    cancelFolderOCR: this.cancelFolderOCR,
                     enterFolder: this.enterFolder,
                 };
 

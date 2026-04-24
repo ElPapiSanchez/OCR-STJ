@@ -863,12 +863,12 @@ def task_process_folder_sequential(files_list: list, config: dict = None, is_pri
         data_path = f"{f_path}/_data.json"
         data = get_data(data_path)
         
-        # Check if this file was removed from queue before we started it
+        # Check if this file was removed from queue or cancelled before we started it
         current_stage = data.get("status", {}).get("stage", "")
-        if current_stage == "removed_from_queue":
-            log.info(f"⏭️ {basename}: Skipped (removed from queue)")
+        if current_stage in ("removed_from_queue", "cancelled"):
+            log.info(f"⏭️ {basename}: Skipped (stage: {current_stage})")
             
-            # Reset the removed document to post-upload immediately so it can be OCR'd again
+            # Reset the document to post-upload immediately so it can be OCR'd again
             try:
                 data["status"] = {
                     "stage": "post-upload",
@@ -877,7 +877,7 @@ def task_process_folder_sequential(files_list: list, config: dict = None, is_pri
                 update_json_file(data_path, data)
                 # Removed verbose reset log
             except Exception as e:
-                log.error(f"Failed to reset removed document {basename}: {e}")
+                log.error(f"Failed to reset document {basename}: {e}")
             
             # Skip this file and move to the next one
             task_process_folder_sequential.apply_async(
@@ -890,7 +890,7 @@ def task_process_folder_sequential(files_list: list, config: dict = None, is_pri
                 },
                 ignore_result=True
             )
-            return {"status": "skipped", "reason": "removed_from_queue"}
+            return {"status": "skipped", "reason": current_stage}
         
         # Determine config for this file
         file_config = config
@@ -1043,16 +1043,40 @@ def task_monitor_file_completion(files_path: str, files_list: list, config: dict
             return {"status": "next_file_queued_after_error"}
             
         elif stage == "cancelled":
-            log.info(f"🚫 {basename}: Cancelled by user, starting next file")
+            log.info(f"🚫 {basename}: Cancelled by user")
             
-            # Reset the cancelled document to post-upload immediately so it can be OCR'd again
+            # Check if the folder itself was cancelled (removed from active_folders)
+            # If so, don't continue processing the next file
+            if folder_id:
+                from src.utils.system_settings import get_system_settings
+                try:
+                    settings = get_system_settings()
+                    active_folders = settings.get("active_folders", [])
+                    folder_still_active = any(f.get("id") == folder_id for f in active_folders)
+                    
+                    if not folder_still_active:
+                        log.warning(f"🚫 {basename}: Folder was cancelled, stopping sequential processing")
+                        # Reset the cancelled document to post-upload so it can be OCR'd again later
+                        try:
+                            data["status"] = {
+                                "stage": "post-upload",
+                                "message": "Pronto para OCR",
+                            }
+                            update_json_file(data_file, data)
+                        except Exception as e:
+                            log.error(f"Failed to reset cancelled document {basename}: {e}")
+                        return {"status": "folder_cancelled", "stopped": True}
+                except Exception as e:
+                    log.error(f"Failed to check folder status: {e}")
+            
+            # If folder is still active, reset this document and continue with next
+            log.info(f"🚫 {basename}: Single file cancelled, continuing with next")
             try:
                 data["status"] = {
                     "stage": "post-upload",
                     "message": "Pronto para OCR",
                 }
                 update_json_file(data_file, data)
-                # Removed verbose reset log
             except Exception as e:
                 log.error(f"Failed to reset cancelled document {basename}: {e}")
             
@@ -1126,7 +1150,9 @@ def task_monitor_folder_completion(folder_id: str, files_list: list):
             data = get_data(data_path)
             stage = data.get("status", {}).get("stage", "")
             
-            if stage in ("post-ocr", "error", "removed_from_queue"):
+            # Count as complete if: finished OCR, failed, removed, cancelled, or never started
+            # "post-upload" means the file was cancelled/reset and sequential processing moved on
+            if stage in ("post-ocr", "error", "removed_from_queue", "cancelled", "post-upload"):
                 completed_count += 1
                 if stage == "error":
                     error_count += 1
@@ -1770,10 +1796,10 @@ def preprocess_image_for_ocr(image, config, debug_save_path=None):
     1. Convert to grayscale
     2. CLAHE (Contrast Limited Adaptive Histogram Equalization)
     3. Median blur for noise reduction
-    4. Thresholding (adaptive Gaussian, OTSU, Sauvola, or none)
-    5. Morphological opening (removes small noise)
-    6. Morphological closing (fills small gaps)
-    7. Deskew
+    4. Deskew (rotation correction on grayscale to avoid binary interpolation artifacts)
+    5. Thresholding (adaptive Gaussian, OTSU, Sauvola, or none)
+    6. Morphological opening (removes small noise)
+    7. Morphological closing (fills small gaps)
     
     :param image: Input image (PIL Image, path string, or numpy array)
     :param config: Configuration dictionary containing preprocessing settings
@@ -1828,7 +1854,17 @@ def preprocess_image_for_ocr(image, config, debug_save_path=None):
         steps_applied.append(f"median_blur({kernel}x{kernel})")
         print(f"   ✓ Step 3: Median blur (kernel={kernel})")
     
-    # Step 4: Thresholding
+    # Step 4: Deskew (before thresholding to avoid interpolation artifacts on binary images)
+    if preprocessing.get("deskew", True):
+        angle = deskew_image(img_array, return_angle=True)
+        if angle is not None and abs(angle) > 0.5:
+            img_array = deskew_image(img_array, return_angle=False)
+            steps_applied.append(f"deskew({angle:.2f}°)")
+            print(f"   ✓ Step 4: Deskew (angle={angle:.2f}°)")
+        else:
+            print(f"   ⊘ Step 4: Deskew skipped (angle too small: {angle:.2f}°)" if angle else "   ⊘ Step 4: Deskew skipped (no text detected)")
+    
+    # Step 5: Thresholding
     threshold_method = preprocessing.get("threshold_method", "adaptive_gaussian")
     if threshold_method == "adaptive_gaussian":
         block_size = preprocessing.get("adaptive_block_size", 11)
@@ -1838,46 +1874,36 @@ def preprocess_image_for_ocr(image, config, debug_save_path=None):
             cv2.THRESH_BINARY, block_size, c
         )
         steps_applied.append(f"adaptive_gaussian(block={block_size}, C={c})")
-        print(f"   ✓ Step 4: Adaptive Gaussian threshold (block_size={block_size}, C={c})")
+        print(f"   ✓ Step 5: Adaptive Gaussian threshold (block_size={block_size}, C={c})")
     elif threshold_method == "otsu":
         _, img_array = cv2.threshold(img_array, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         steps_applied.append("otsu")
-        print(f"   ✓ Step 4: OTSU threshold")
+        print(f"   ✓ Step 5: OTSU threshold")
     elif threshold_method == "sauvola":
         # Use local window-based Sauvola thresholding
         window_size = preprocessing.get("sauvola_window", 25)
         k = preprocessing.get("sauvola_k", 0.2)
         img_array = apply_sauvola_threshold(img_array, window_size, k)
         steps_applied.append(f"sauvola(window={window_size}, k={k})")
-        print(f"   ✓ Step 4: Sauvola threshold (window={window_size}, k={k})")
+        print(f"   ✓ Step 5: Sauvola threshold (window={window_size}, k={k})")
     else:
-        print(f"   ⊘ Step 4: Threshold skipped (method={threshold_method})")
+        print(f"   ⊘ Step 5: Threshold skipped (method={threshold_method})")
     
-    # Step 5: Morphological opening (removes small noise)
+    # Step 6: Morphological opening (removes small noise)
     if preprocessing.get("morphological_opening", True):
         kernel_size = preprocessing.get("morph_kernel_size", 3)
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (kernel_size, kernel_size))
         img_array = cv2.morphologyEx(img_array, cv2.MORPH_OPEN, kernel)
         steps_applied.append(f"opening({kernel_size}x{kernel_size})")
-        print(f"   ✓ Step 5: Morphological opening (kernel={kernel_size})")
+        print(f"   ✓ Step 6: Morphological opening (kernel={kernel_size})")
     
-    # Step 6: Morphological closing (fills small gaps)
+    # Step 7: Morphological closing (fills small gaps)
     if preprocessing.get("morphological_closing", True):
         kernel_size = preprocessing.get("morph_kernel_size", 3)
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (kernel_size, kernel_size))
         img_array = cv2.morphologyEx(img_array, cv2.MORPH_CLOSE, kernel)
         steps_applied.append(f"closing({kernel_size}x{kernel_size})")
-        print(f"   ✓ Step 6: Morphological closing (kernel={kernel_size})")
-    
-    # Step 7: Deskew
-    if preprocessing.get("deskew", True):
-        angle = deskew_image(img_array, return_angle=True)
-        if angle is not None and abs(angle) > 0.5:
-            img_array = deskew_image(img_array, return_angle=False)
-            steps_applied.append(f"deskew({angle:.2f}°)")
-            print(f"   ✓ Step 7: Deskew (angle={angle:.2f}°)")
-        else:
-            print(f"   ⊘ Step 7: Deskew skipped (angle too small: {angle:.2f}°)" if angle else "   ⊘ Step 7: Deskew skipped (no text detected)")
+        print(f"   ✓ Step 7: Morphological closing (kernel={kernel_size})")
     
     print(f"🔧 PREPROCESSING: Complete! Applied {len(steps_applied)} steps: {', '.join(steps_applied)}")
     
@@ -2025,8 +2051,6 @@ def task_page_ocr(
         # Check if document has been cancelled
         doc_data = get_data(data_file)
         current_stage = doc_data.get("status", {}).get("stage", "")
-        
-        log.warning(f"🔍 CANCEL CHECK in page OCR (page {page_num}): stage={current_stage}, is_cancelled={current_stage == 'cancelled'}")
         
         if current_stage == "cancelled":
             log.warning(f"🚫 {basename} | Page {page_num}: Aborted (document cancelled)")
@@ -2244,6 +2268,12 @@ def task_page_ocr(
             # Apply comprehensive preprocessing pipeline
             image = preprocess_image_for_ocr(image, config, debug_save_path=debug_save_path)
             
+            # Check again if document was cancelled (before expensive OCR operation)
+            doc_data = get_data(data_file)
+            if doc_data.get("status", {}).get("stage") == "cancelled":
+                log.warning(f"🚫 {basename} | Page {page_num}: Aborted before OCR (document cancelled)")
+                return {"status": "cancelled"}
+            
             # Removed verbose "Starting segmented OCR" log
             
             # Must OCR each text box. raw_results received but not expected, as currently can only be done with full page
@@ -2333,6 +2363,12 @@ def task_page_ocr(
             # Apply comprehensive preprocessing pipeline
             image = preprocess_image_for_ocr(image, config, debug_save_path=debug_save_path)
             
+            # Check again if document was cancelled (before expensive OCR operation)
+            doc_data = get_data(data_file)
+            if doc_data.get("status", {}).get("stage") == "cancelled":
+                log.warning(f"🚫 {basename} | Page {page_num}: Aborted before full-page OCR (document cancelled)")
+                return {"status": "cancelled"}
+            
             try:
                 json_results, raw_results = ocr_engine.get_structure(
                     page=image,
@@ -2388,7 +2424,9 @@ def task_page_ocr(
 
         data = get_data(data_file)
         data["ocr"]["progress"] = pages_done
-        if data["status"]["stage"] != "error":
+        # Don't overwrite status if document was cancelled or errored
+        current_stage = data.get("status", {}).get("stage", "")
+        if current_stage not in ("error", "cancelled"):
             data["status"] = {
                 "stage": "ocr",
                 "message": "processing ocr page",
@@ -2396,6 +2434,8 @@ def task_page_ocr(
                 "message_total": n_doc_pages,
                 "percentage": ocr_percentage,
             }
+        else:
+            log.warning(f"🚫 {basename}: Skipping status update, document is {current_stage}")
         update_json_file(data_file, data)
 
         # Note: Export is now triggered by task_process_pages_sequential when all pages complete

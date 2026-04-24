@@ -12,6 +12,7 @@ import SettingsSuggestIcon from '@mui/icons-material/SettingsSuggest';
 import FolderIcon from '@mui/icons-material/Folder';
 import DescriptionIcon from '@mui/icons-material/Description';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
+import CancelIcon from '@mui/icons-material/Cancel';
 
 import { withTranslation } from "react-i18next";
 import OcrIcon from 'Components/CustomIcons/OcrIcon';
@@ -77,6 +78,12 @@ class FolderCard extends React.Component {
         this.props.configureOCR(this.props.name, true, false, customConfig);
     }
 
+    cancelFolderOCR(e) {
+        e.stopPropagation();
+        this.handleCloseContextMenu();
+        this.props.cancelFolderOCR(this.props.name);
+    }
+
     delete(e) {
         e.stopPropagation();
         this.handleCloseContextMenu();
@@ -95,7 +102,7 @@ class FolderCard extends React.Component {
                     sx={{ 
                         position: 'absolute', 
                         top: 'var(--spacing-sm)', 
-                        right: 'var(--spacing-sm)',
+                        right: this.state.isHovered ? '3rem' : 'var(--spacing-sm)',
                         backgroundColor: 'rgba(76, 175, 80, 0.9)',
                         display: 'flex',
                         alignItems: 'center',
@@ -104,7 +111,9 @@ class FolderCard extends React.Component {
                         fontSize: 'var(--font-size-xs)',
                         fontWeight: 600,
                         color: 'white',
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                        transition: 'right 0.2s ease-in-out',
+                        zIndex: 1
                     }}
                 >
                     <CircularProgress size={12} sx={{ mr: '4px', color: 'white' }} />
@@ -122,7 +131,7 @@ class FolderCard extends React.Component {
                     sx={{ 
                         position: 'absolute', 
                         top: 'var(--spacing-sm)', 
-                        right: 'var(--spacing-sm)',
+                        right: this.state.isHovered ? '3rem' : 'var(--spacing-sm)',
                         backgroundColor: 'rgba(255, 152, 0, 0.9)',
                         display: 'flex',
                         alignItems: 'center',
@@ -131,7 +140,9 @@ class FolderCard extends React.Component {
                         fontSize: 'var(--font-size-xs)',
                         fontWeight: 600,
                         color: 'white',
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                        transition: 'right 0.2s ease-in-out',
+                        zIndex: 1
                     }}
                 >
                     {this.props.t("queue.pending")} (#{position})
@@ -302,6 +313,13 @@ class FolderCard extends React.Component {
                         {this.props.t("config ocr")}
                     </MenuItem>
 
+                    {this.state.info?.["queue_status"]?.state === "active" && (
+                        <MenuItem onClick={(e) => this.cancelFolderOCR(e)} sx={{ color: 'var(--red-600)' }}>
+                            <CancelIcon sx={{ mr: 1, fontSize: '1.2rem' }} />
+                            {this.props.t("cancel ocr")}
+                        </MenuItem>
+                    )}
+
                     <MenuItem onClick={(e) => this.delete(e)} sx={{ color: 'var(--red-600)' }}>
                         <DeleteForeverIcon sx={{ mr: 1, fontSize: '1.2rem' }} />
                         {this.props.t("delete")}
@@ -318,6 +336,7 @@ FolderCard.defaultProps = {
     enterFolder: null,
     performOCR: null,
     configureOCR: null,
+    cancelFolderOCR: null,
     deleteItem: null,
 };
 
