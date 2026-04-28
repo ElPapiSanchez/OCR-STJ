@@ -41,6 +41,227 @@ log = logging.getLogger(__name__)
 OUT_DEFAULT_DPI = 100
 
 
+def _export_pdf_overlay_text_only(
+    files_path,
+    outputs_path,
+    inputs_path,
+    data,
+    data_file,
+    target,
+    doc_basename,
+    original_extension,
+    dpi_original,
+    generate_index,
+    get_csv,
+    simple,
+    filename_csv,
+):
+    """
+    NO-COMPRESSION WORKFLOW FOR PDF: Use original PDF and only add OCR text layer.
+    
+    This approach:
+    1. Preserves original file size and quality (no re-compression)
+    2. Memory efficient: No image rendering or PDF rebuilding
+    3. Fast: Only adds text layer, doesn't process images
+    
+    Used when:
+    - Original file is PDF
+    - Compression is disabled
+    """
+    log.info("Using PDF overlay workflow: adding text to original PDF without compression")
+    
+    # Step 1: Find original PDF file
+    if inputs_path and os.path.isfile(inputs_path):
+        original_file_path = inputs_path
+    else:
+        relative_path = files_path.replace(FILES_PATH, "").strip("/")
+        parts = relative_path.split("/")
+        if len(parts) > 1:
+            folder_path = "/".join(parts[:-1])
+            original_file_path = f"{INPUTS_PATH}/{folder_path}/{doc_basename}.{original_extension}"
+        else:
+            original_file_path = f"{INPUTS_PATH}/{doc_basename}.{original_extension}"
+    
+    if not os.path.exists(original_file_path):
+        log.error(f"Original PDF not found: {original_file_path}")
+        raise FileNotFoundError(f"Original PDF not found: {original_file_path}")
+    
+    original_size = os.path.getsize(original_file_path)
+    log.info(f"Found original PDF: {original_file_path}")
+    log.info(f"Original file size: {size_to_units(original_size)}")
+    
+    # Step 2: Open original PDF with PyMuPDF
+    update_json_file(
+        data_file,
+        {
+            "status": {
+                "stage": "exporting",
+                "message": "A adicionar texto OCR...",
+                "percentage": 95,
+            }
+        },
+    )
+    
+    try:
+        # Open original PDF for editing
+        pdf_doc = fitz.open(original_file_path)
+        
+        # Get OCR results - sort by numeric page number
+        ocr_results_path = f"{files_path}/_ocr_results"
+        ocr_files_unsorted = [
+            f for f in os.listdir(ocr_results_path)
+            if f.endswith(".json") and not f.startswith("_")
+        ]
+        
+        # Sort by extracting page number from filename
+        def get_page_number(filename):
+            match = re.search(r"_(\d+)\.json$", filename)
+            if match:
+                return int(match.group(1))
+            match = re.search(r"(\d+)", filename)
+            return int(match.group(1)) if match else 0
+        
+        ocr_files = sorted(ocr_files_unsorted, key=get_page_number)
+        
+        log.info(f"Found {len(ocr_files)} OCR result files")
+        log.info(f"Original PDF has {len(pdf_doc)} pages")
+        
+        if len(ocr_files) != len(pdf_doc):
+            log.warning(f"Mismatch: {len(ocr_files)} OCR files but {len(pdf_doc)} PDF pages!")
+        
+        words = {}
+        
+        # Process each page
+        for page_idx in range(min(len(pdf_doc), len(ocr_files))):
+            page = pdf_doc[page_idx]
+            page_rect = page.rect
+            page_width = page_rect.width
+            page_height = page_rect.height
+            
+            ocr_file = ocr_files[page_idx]
+            hocr_path = os.path.join(ocr_results_path, ocr_file)
+            
+            # Load OCR data
+            with open(hocr_path, encoding="utf-8") as f:
+                hocrfile = json.load(f)
+            
+            # Get OCR image dimensions
+            max_x = max_y = 0
+            for section in hocrfile:
+                for line in section:
+                    for word in line:
+                        box = word["box"]
+                        max_x = max(max_x, box[2])
+                        max_y = max(max_y, box[3])
+            
+            # Calculate scale factor: OCR pixels → PDF points
+            scale_factor = 72.0 / dpi_original
+            ocr_image_height = max_y
+            
+            log.info(f"Page {page_idx}: OCR bbox {max_x:.0f}x{max_y:.0f}px, PDF {page_width:.1f}x{page_height:.1f}pt, scale={scale_factor:.6f}")
+            
+            # Add text to page
+            for section in hocrfile:
+                for line in section:
+                    for word in line:
+                        rawtext = word["text"]
+                        box = word["box"]
+                        b = word["b"]  # baseline
+                        
+                        if not rawtext or not rawtext.strip():
+                            continue
+                        
+                        # Convert OCR pixel coordinates to PDF point coordinates
+                        x0_pt = box[0] * scale_factor
+                        y_baseline_pt = b * scale_factor
+                        x1_pt = box[2] * scale_factor
+                        y_top_pt = box[1] * scale_factor
+                        
+                        # Calculate font size
+                        word_height_pt = abs(y_top_pt - y_baseline_pt)
+                        font_size_pt = word_height_pt * 1.2  # Heuristic multiplier
+                        
+                        # Insert invisible text using built-in font (no embedding needed)
+                        # Use fontname="helv" (Helvetica) which is a PDF base font
+                        page.insert_text(
+                            (x0_pt, y_baseline_pt),
+                            rawtext,
+                            fontname="helv",
+                            fontsize=font_size_pt,
+                            render_mode=3,  # Invisible text
+                        )
+                        
+                        # Collect words for index
+                        if generate_index:
+                            w = rawtext.strip()
+                            remove_chars = [",", ".", ":", ";", "!", "?", '"', "'", "(", ")", "[", "]"]
+                            for c in remove_chars:
+                                w = w.replace(c, "")
+                            w = w.lower()
+                            
+                            if w:
+                                if w not in words:
+                                    words[w] = {"count": 1, "pages": str(page_idx + 1)}
+                                else:
+                                    words[w]["count"] += 1
+                                    if str(page_idx + 1) not in words[w]["pages"].split(", "):
+                                        words[w]["pages"] += f", {page_idx + 1}"
+        
+        # Save modified PDF with maximum optimization
+        # - garbage=4: Maximum garbage collection
+        # - deflate=True: Compress streams
+        # - clean=True: Remove duplicate objects
+        # - deflate_images=True: Compress images
+        # - deflate_fonts=True: Compress fonts
+        # - pretty=False: Don't pretty-print (smaller file)
+        pdf_doc.save(
+            target,
+            garbage=4,
+            deflate=True,
+            clean=True,
+            deflate_images=True,
+            deflate_fonts=True,
+            pretty=False,
+        )
+        pdf_doc.close()
+        
+        final_size = os.path.getsize(target)
+        size_increase = final_size - original_size
+        increase_percent = (size_increase / original_size * 100) if original_size > 0 else 0
+        
+        log.info(f"Saved PDF with text overlay to: {target}")
+        log.info(f"Original size: {size_to_units(original_size)}")
+        log.info(f"Final size: {size_to_units(final_size)}")
+        log.info(f"Size increase: {size_to_units(size_increase)} ({increase_percent:.1f}%)")
+        
+        # Generate CSV index if needed
+        if not simple and generate_index:
+            if get_csv:
+                words_list = [
+                    item for item in sorted(
+                        words.items(), key=lambda item: item[0].lower() + item[0]
+                    )
+                ]
+                export_csv_from_words(filename_csv, words_list)
+        
+        # Update status to complete
+        update_json_file(
+            data_file,
+            {
+                "status": {
+                    "stage": "post-ocr",
+                    "percentage": 100,
+                }
+            },
+        )
+        
+        return target
+        
+    except Exception as e:
+        log.error(f"Failed to add text overlay: {e}")
+        raise
+
+
 def _export_pdf_compress_first(
     files_path,
     outputs_path,
@@ -884,6 +1105,26 @@ def export_pdf(
             compression_bg_quality=compression_bg_quality,
             compression_fg_quality=compression_fg_quality,
             compression_flatten=compression_flatten,
+            dpi_original=dpi_original,
+            generate_index=generate_index,
+            get_csv=get_csv,
+            simple=simple,
+            filename_csv=filename_csv,
+        )
+    
+    # OPTIMIZATION: For PDF without compression, add text overlay to original PDF
+    # This preserves the original file size and quality
+    if not compress and original_extension == "pdf":
+        log.info(f"Using text overlay workflow for PDF without compression")
+        return _export_pdf_overlay_text_only(
+            files_path=files_path,
+            outputs_path=outputs_path,
+            inputs_path=inputs_path,
+            data=data,
+            data_file=data_file,
+            target=target,
+            doc_basename=doc_basename,
+            original_extension=original_extension,
             dpi_original=dpi_original,
             generate_index=generate_index,
             get_csv=get_csv,
