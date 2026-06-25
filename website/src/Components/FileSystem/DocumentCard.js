@@ -7,6 +7,7 @@ import Tooltip from '@mui/material/Tooltip';
 import CircularProgress from '@mui/material/CircularProgress';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
+import CancelIcon from '@mui/icons-material/Cancel';
 import SettingsIcon from '@mui/icons-material/Settings';
 import SettingsSuggestIcon from '@mui/icons-material/SettingsSuggest';
 import TuneIcon from '@mui/icons-material/Tune';
@@ -69,6 +70,12 @@ class DocumentCard extends React.Component {
 
     handleCloseContextMenu() {
         this.setState({ contextMenu: null });
+    }
+    
+    cancelOCR(e) {
+        e.stopPropagation();
+        this.handleCloseContextMenu();
+        this.props.cancelOCR(this.props.name);
     }
 
     documentClicked() {
@@ -410,6 +417,13 @@ class DocumentCard extends React.Component {
                         {this.props.t("config ocr")}
                     </MenuItem>
 
+                    {(status?.stage === "ocr" || status?.stage === "exporting" || status?.stage === "compressing") && (
+                        <MenuItem onClick={(e) => this.cancelOCR(e)} sx={{ color: 'var(--red-600)' }}>
+                            <CancelIcon sx={{ mr: 1, fontSize: '1.2rem' }} />
+                            {this.props.t("cancel ocr")}
+                        </MenuItem>
+                    )}
+
                     {hasOCR && (
                         <>
                             <MenuItem onClick={(e) => { e.stopPropagation(); this.props.getDocument("txt", this.props.name, "txt"); this.handleCloseContextMenu(); }} disabled={isProcessing}>
@@ -456,6 +470,7 @@ DocumentCard.defaultProps = {
     getImages: null,
     editText: null,
     performOCR: null,
+    cancelOCR: null,
     configureOCR: null,
     createLayout: null,
 };

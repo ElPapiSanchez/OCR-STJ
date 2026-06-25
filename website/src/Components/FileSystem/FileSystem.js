@@ -1495,16 +1495,7 @@ class FileExplorer extends React.Component {
                                                 {this.props.t("new document")}
                                             </Button>
 
-                                            {MODEL !== STJ && (
-                                                <Button
-                                                    variant="outlined"
-                                                    startIcon={<SyncIcon/>}
-                                                    onClick={() => this.openSyncMenu()}
-                                                    className="menuButton menuFunctionButton noMarginRight"
-                                                >
-                                                    {this.props.t("sync")}
-                                                </Button>
-                                            )}
+                                            
                                         </Box>
 
                                         <Box sx={{display: "flex", flexDirection: "row", gap: "0.5rem", marginLeft: "auto"}}>
@@ -1517,6 +1508,17 @@ class FileExplorer extends React.Component {
                                             >
                                                 {this.props.t("immediate ocr")}
                                             </Button>
+
+                                            {/* 
+                                            <Button
+                                                variant="contained"
+                                                startIcon={<SyncIcon/>}
+                                                onClick={() => this.openSyncMenu()}
+                                                className="menuButton"
+                                            >
+                                                {this.props.t("sync")}
+                                            </Button> 
+                                            */}
 
                                             {this.props.spaceId
                                                 ? <Button

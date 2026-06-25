@@ -373,6 +373,15 @@ def _export_pdf_compress_first(
         
         # Define compression progress callback
         def compression_progress(page_num, total_pages):
+            # Check if document was cancelled before processing next page
+            try:
+                current_data = get_data(data_file)
+                if current_data.get("status", {}).get("stage") == "cancelled":
+                    log.warning(f"🚫 Compression aborted: document cancelled at page {page_num}/{total_pages}")
+                    raise Exception("Compression cancelled by user")
+            except FileNotFoundError:
+                pass  # File might have been deleted
+            
             # Compression is 41% to 95%, so 54% range
             progress_in_stage = (page_num / total_pages)
             percentage = int(41 + progress_in_stage * 54)

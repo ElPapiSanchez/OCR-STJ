@@ -82,6 +82,40 @@ const QueueMonitor = ({ compact = false, autoRefresh = true, refreshInterval = 5
         }
     };
 
+    const handleCancelFolderOCR = async (folderPath) => {
+        if (!window.confirm(t('queue.cancel_folder_confirm') || 'Cancel folder OCR?')) {
+            return;
+        }
+
+        try {
+            const response = await axios.post(`${API_URL}/cancel-folder-ocr`, { 
+                files_path: folderPath 
+            });
+            
+            if (response.data.success) {
+                setSnackbar({
+                    open: true,
+                    message: t('queue.cancel_success') + ` (${response.data.cancelled_documents} ${t('document')}s)`,
+                    severity: 'success'
+                });
+                fetchQueueStatus();
+            } else {
+                setSnackbar({
+                    open: true,
+                    message: t('queue.cancel_error') + ': ' + response.data.error,
+                    severity: 'error'
+                });
+            }
+        } catch (err) {
+            console.error('Error cancelling folder OCR:', err);
+            setSnackbar({
+                open: true,
+                message: t('queue.cancel_error') + ': ' + err.message,
+                severity: 'error'
+            });
+        }
+    };
+
     const handleRemoveFromQueue = async (filePath) => {
         if (!window.confirm(t('queue.remove_confirm'))) {
             return;
@@ -325,12 +359,28 @@ const QueueMonitor = ({ compact = false, autoRefresh = true, refreshInterval = 5
                                                 </Typography>
                                             </Box>
                                         </Box>
-                                        <Chip 
-                                            label={`${Math.floor(folder.duration_seconds / 60)}m ${folder.duration_seconds % 60}s`}
-                                            size="small"
-                                            color="success"
-                                            variant="outlined"
-                                        />
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                            <Chip 
+                                                label={`${Math.floor(folder.duration_seconds / 60)}m ${folder.duration_seconds % 60}s`}
+                                                size="small"
+                                                color="success"
+                                                variant="outlined"
+                                            />
+                                            <Tooltip title={t('queue.cancel') || 'Cancel'}>
+                                                <IconButton 
+                                                    size="small"
+                                                    color="error"
+                                                    onClick={() => handleCancelFolderOCR(folder.path)}
+                                                    sx={{ 
+                                                        '&:hover': {
+                                                            backgroundColor: 'rgba(211, 47, 47, 0.1)'
+                                                        }
+                                                    }}
+                                                >
+                                                    <CancelIcon fontSize="small" />
+                                                </IconButton>
+                                            </Tooltip>
+                                        </Box>
                                     </Box>
                                 ))}
                             </Box>

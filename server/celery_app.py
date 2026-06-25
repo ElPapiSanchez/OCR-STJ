@@ -868,16 +868,24 @@ def task_process_folder_sequential(files_list: list, config: dict = None, is_pri
         if current_stage in ("removed_from_queue", "cancelled"):
             log.info(f"⏭️ {basename}: Skipped (stage: {current_stage})")
             
-            # Reset the document to post-upload immediately so it can be OCR'd again
-            try:
-                data["status"] = {
-                    "stage": "post-upload",
-                    "message": "Pronto para OCR",
-                }
-                update_json_file(data_path, data)
-                # Removed verbose reset log
-            except Exception as e:
-                log.error(f"Failed to reset document {basename}: {e}")
+            # For "removed_from_queue", reset to post-upload
+            # For "cancelled" (was actively processing), leave as-is so user can see what happened
+            if current_stage == "removed_from_queue":
+                try:
+                    data["status"] = {
+                        "stage": "post-upload",
+                        "message": "Pronto para OCR",
+                    }
+                    # Clear OCR progress data to avoid UI showing stale progress
+                    if "ocr" in data:
+                        data["ocr"]["progress"] = 0
+                        if "exceptions" in data["ocr"]:
+                            del data["ocr"]["exceptions"]
+                    update_json_file(data_path, data)
+                    # Removed verbose reset log
+                except Exception as e:
+                    log.error(f"Failed to reset document {basename}: {e}")
+            # For "cancelled", leave as-is
             
             # Skip this file and move to the next one
             task_process_folder_sequential.apply_async(
@@ -981,6 +989,11 @@ def task_reset_cancelled_document(files_path: str):
                 "stage": "post-upload",
                 "message": "Pronto para OCR",
             }
+            # Clear OCR progress data to avoid UI showing stale progress
+            if "ocr" in data:
+                data["ocr"]["progress"] = 0
+                if "exceptions" in data["ocr"]:
+                    del data["ocr"]["exceptions"]
             update_json_file(data_file, data)
             return {"status": "reset_complete"}
         else:
@@ -1056,26 +1069,25 @@ def task_monitor_file_completion(files_path: str, files_list: list, config: dict
                     
                     if not folder_still_active:
                         log.warning(f"🚫 {basename}: Folder was cancelled, stopping sequential processing")
-                        # Reset the cancelled document to post-upload so it can be OCR'd again later
-                        try:
-                            data["status"] = {
-                                "stage": "post-upload",
-                                "message": "Pronto para OCR",
-                            }
-                            update_json_file(data_file, data)
-                        except Exception as e:
-                            log.error(f"Failed to reset cancelled document {basename}: {e}")
+                        # Keep document as "cancelled" so user can see what happened
+                        # Do NOT reset to post-upload - let user manually retry if needed
                         return {"status": "folder_cancelled", "stopped": True}
                 except Exception as e:
                     log.error(f"Failed to check folder status: {e}")
             
-            # If folder is still active, reset this document and continue with next
+            # If folder is still active, this was a single file cancellation
+            # Reset this document and continue with next
             log.info(f"🚫 {basename}: Single file cancelled, continuing with next")
             try:
                 data["status"] = {
                     "stage": "post-upload",
                     "message": "Pronto para OCR",
                 }
+                # Clear OCR progress data to avoid UI showing stale progress
+                if "ocr" in data:
+                    data["ocr"]["progress"] = 0
+                    if "exceptions" in data["ocr"]:
+                        del data["ocr"]["exceptions"]
                 update_json_file(data_file, data)
             except Exception as e:
                 log.error(f"Failed to reset cancelled document {basename}: {e}")
